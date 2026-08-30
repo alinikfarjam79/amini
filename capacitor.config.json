@@ -1,0 +1,13 @@
+{
+  "appId": "com.example.app",
+  "appName": "datarang",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "BarcodeScanning": {
+      "googleBarcodeScannerModuleInstallState": "prompt"
+    }
+  }
+}

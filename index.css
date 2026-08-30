@@ -1,0 +1,9 @@
+@import "tailwindcss";
+/* Makes WebView transparent so ML Kit camera shows through */
+/* index.css */
+
+
+body.barcode-scanner-active #root {
+  visibility: hidden !important; /* ✅ hides app content but keeps layout */
+  background: transparent !important;
+}
