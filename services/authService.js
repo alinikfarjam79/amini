@@ -13,13 +13,23 @@ const createBypassUser = (phoneNumber = "") => ({
 });
 
 const postJson = async (path, body) => {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    const networkError = new Error(
+      "ارتباط با سرور برقرار نشد. اگر قبلاً وارد شده باشید، می‌توانید اطلاعات ذخیره‌شده را به صورت آفلاین ببینید.",
+    );
+    networkError.type = "NETWORK";
+    throw networkError;
+  }
 
   let payload = null;
 
@@ -30,6 +40,14 @@ const postJson = async (path, body) => {
   }
 
   if (!response.ok || !payload?.success) {
+    if (response.status >= 500) {
+      const networkError = new Error(
+        "ارتباط با سرور برقرار نشد. اگر قبلاً وارد شده باشید، می‌توانید اطلاعات ذخیره‌شده را به صورت آفلاین ببینید.",
+      );
+      networkError.type = "NETWORK";
+      throw networkError;
+    }
+
     throw new Error(payload?.message || "درخواست ناموفق بود. دوباره تلاش کنید.");
   }
 

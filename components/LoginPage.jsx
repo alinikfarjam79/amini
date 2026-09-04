@@ -1,22 +1,59 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { theme } from "../config/theme";
 import { checkLoginMethod, login } from "../services/authService";
 
-export default function LoginPage({ onLogin }) {
+export default function LoginPage({ onLogin, onOfflineLogin }) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [loginMethod, setLoginMethod] = useState(null);
   const [credential, setCredential] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const offlineLoginTimerRef = useRef(null);
 
   const isPasswordStep = loginMethod === "password";
   const isOtpStep = loginMethod === "otp";
   const isSecondStep = Boolean(loginMethod);
 
   const resetToPhoneStep = () => {
+    if (offlineLoginTimerRef.current) {
+      window.clearTimeout(offlineLoginTimerRef.current);
+      offlineLoginTimerRef.current = null;
+    }
+
     setLoginMethod(null);
     setCredential("");
     setError("");
+  };
+
+  useEffect(
+    () => () => {
+      if (offlineLoginTimerRef.current) {
+        window.clearTimeout(offlineLoginTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const scheduleOfflineLogin = (fallbackMessage) => {
+    if (offlineLoginTimerRef.current) {
+      window.clearTimeout(offlineLoginTimerRef.current);
+    }
+
+    setError(
+      `${fallbackMessage} تا ۵ ثانیه دیگر وارد صفحه اصلی آفلاین می‌شوید.`,
+    );
+
+    offlineLoginTimerRef.current = window.setTimeout(() => {
+      const result = onOfflineLogin?.(phoneNumber.trim());
+      offlineLoginTimerRef.current = null;
+
+      if (result?.ok) {
+        setError("");
+        return;
+      }
+
+      setError(result?.message || fallbackMessage);
+    }, 5000);
   };
 
   const handlePhoneSubmit = async () => {
@@ -87,6 +124,11 @@ export default function LoginPage({ onLogin }) {
         await handlePhoneSubmit();
       }
     } catch (err) {
+      if (err.type === "NETWORK") {
+        scheduleOfflineLogin(err.message);
+        return;
+      }
+
       setError(err.message || "خطایی رخ داد. دوباره تلاش کنید.");
     } finally {
       setIsSubmitting(false);

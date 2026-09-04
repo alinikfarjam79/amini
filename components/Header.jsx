@@ -24,8 +24,18 @@ export const Header = ({
   return (
     <header
       dir="rtl"
-      className={`px-6 py-5 ${theme.colors.background.surface} border-b border-slate-800`}
+      className={`px-4 py-5 sm:px-6 ${theme.colors.background.surface} border-b border-slate-800`}
     >
+      <style>{`
+        @media (min-width: 400px) {
+          .user-menu-dropdown {
+            position: absolute;
+            left: 0;
+            top: 100%;
+            margin-top: 0.5rem;
+          }
+        }
+      `}</style>
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
@@ -49,7 +59,7 @@ export const Header = ({
         </div>
 
         {currentUser && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
             <span className={`text-sm font-semibold ${theme.colors.text.primary}`}>
               {currentUser.phoneNumber || currentUser.username}
             </span>
@@ -70,7 +80,7 @@ export const Header = ({
                 aria-label="باز کردن منوی کاربری"
                 aria-expanded={isMenuOpen}
                 onClick={() => setIsMenuOpen((current) => !current)}
-                className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition-colors hover:bg-slate-200"
+                className="relative z-50 flex h-10 w-10 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition-colors hover:bg-slate-200"
               >
                 <span className="flex flex-col gap-1" aria-hidden="true">
                   <span className="block h-0.5 w-5 rounded-full bg-current" />
@@ -80,7 +90,7 @@ export const Header = ({
               </button>
 
               {isMenuOpen && (
-                <div className="absolute left-0 top-full z-40 mt-2 w-48 overflow-hidden rounded-md border border-slate-200 bg-white py-1 text-right shadow-xl">
+                <div className="user-menu-dropdown fixed left-4 top-[7.75rem] z-40 w-48 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-slate-200 bg-white py-1 text-right shadow-xl">
                   {onDashboard && (
                     <button
                       type="button"

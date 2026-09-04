@@ -19,8 +19,11 @@ import { readExcelFile } from "./utilities/function";
 import {
   writeSnapshot,
 } from "./lib/priceHistoryService";
+import { cacheService } from "./lib/cacheService";
+import { CACHE_KEY } from "./config/constants";
 
 const USER_STORAGE_KEY = "amini_xls_user";
+const LAST_USER_STORAGE_KEY = "amini_xls_last_user";
 const TOKEN_COOKIE_NAME = "amini_xls_token";
 const INVENTORY_STORAGE_KEY = "amini_xls_warehouse_inventory";
 
@@ -86,7 +89,6 @@ const clearAuthCookie = () => {
 
 const getStoredUser = () => {
   if (!getCookie(TOKEN_COOKIE_NAME)) {
-    localStorage.removeItem(USER_STORAGE_KEY);
     return null;
   }
 
@@ -95,6 +97,28 @@ const getStoredUser = () => {
   } catch {
     return null;
   }
+};
+
+const getStoredUserWithoutToken = () => {
+  try {
+    return (
+      JSON.parse(localStorage.getItem(USER_STORAGE_KEY)) ||
+      JSON.parse(localStorage.getItem(LAST_USER_STORAGE_KEY))
+    );
+  } catch {
+    return null;
+  }
+};
+
+const hasCachedProducts = () => {
+  const cachedProducts = cacheService.read(CACHE_KEY);
+
+  if (Array.isArray(cachedProducts)) return cachedProducts.length > 0;
+  if (Array.isArray(cachedProducts?.products)) {
+    return cachedProducts.products.length > 0;
+  }
+
+  return false;
 };
 
 export default function App() {
@@ -231,8 +255,45 @@ export default function App() {
 
     setAuthCookie(token);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(nextUser));
+    localStorage.setItem(LAST_USER_STORAGE_KEY, JSON.stringify(nextUser));
     setCurrentUser(nextUser);
     setPage("main");
+
+    return { ok: true };
+  };
+
+  const handleOfflineLogin = (phoneNumber) => {
+    const storedUser = getStoredUserWithoutToken();
+    const normalizedPhone = String(phoneNumber || "").trim();
+
+    if (
+      normalizedPhone &&
+      storedUser?.phoneNumber &&
+      storedUser.phoneNumber !== normalizedPhone
+    ) {
+      return {
+        ok: false,
+        message: "برای این شماره موبایل اطلاعات لوکال ذخیره نشده است.",
+      };
+    }
+
+    if (!hasCachedProducts()) {
+      return {
+        ok: false,
+        message: "اطلاعات لوکال محصولات روی این دستگاه وجود ندارد.",
+      };
+    }
+
+    const offlineUser = storedUser || {
+      id: "offline-user",
+      phoneNumber: normalizedPhone || "offline-user",
+      loginMethod: "offline",
+      role: "user",
+    };
+
+    setCurrentUser({ ...offlineUser, isOffline: true });
+    setPage("main");
+    navigate("/");
 
     return { ok: true };
   };
@@ -247,7 +308,9 @@ export default function App() {
   };
 
   if (!currentUser) {
-    return <LoginPage onLogin={handleLogin} />;
+    return (
+      <LoginPage onLogin={handleLogin} onOfflineLogin={handleOfflineLogin} />
+    );
   }
 
   // ──price change─────────────────────────────────────────────────────
@@ -286,13 +349,19 @@ export default function App() {
         {showNetworkWarning && (
           <Banner
             variant="warning"
-            message="هشدار: برقراری ارتباط با سرور ممکن نبود. در حال نمایش اطلاعات ذخیره‌شده (احتمالاً قدیمی)."
+            message="داده جدیدی از سرور دریافت نشد. اطلاعات از کش دستگاه خوانده می‌شود."
           />
         )}
         {showNetworkBlocking && (
           <Banner
             variant="danger"
             message="هشدار: برقراری ارتباط با سرور ممکن نبود. در حال نمایش اطلاعات ذخیره‌شده (احتمالاً قدیمی)."
+          />
+        )}
+        {currentUser?.isOffline && (
+          <Banner
+            variant="warning"
+            message="شما به صورت آفلاین وارد شده‌اید و اطلاعات ذخیره‌شده روی همین دستگاه نمایش داده می‌شود."
           />
         )}
         {showParseError && (

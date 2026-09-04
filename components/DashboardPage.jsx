@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Header } from "./Header";
+import { SearchBox } from "./SearchBox";
 import { theme } from "../config/theme";
-import { readExcelFile } from "../utilities/function";
 import {
   uploadProductsExcel,
   uploadQuantityExcel,
@@ -12,39 +12,16 @@ import {
   uploadCompanyFile,
 } from "../services/companyService";
 import { createUser, deleteUser, getUsers } from "../services/userService";
+import {
+  createWarehouse,
+  getWarehouseId,
+  getWarehouseItems,
+  getWarehouses,
+  uploadWarehouseProductsExcel,
+} from "../services/warehouseService";
+import { filterByProductSearch } from "../hook/useSearch";
 
-const WAREHOUSES_STORAGE_KEY = "amini_xls_warehouses";
 const INVENTORY_STORAGE_KEY = "amini_xls_warehouse_inventory";
-
-const defaultWarehouses = [
-  { id: "warehouse-plastic", name: "انبار پلاستیک" },
-  { id: "warehouse-oil", name: "انبار روغن" },
-  { id: "warehouse-store", name: "انبار فروشگاه" },
-];
-
-const createWarehouseId = () => {
-  if (window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
-  }
-
-  return `warehouse-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-};
-
-const getStoredWarehouses = () => {
-  try {
-    const storedWarehouses = JSON.parse(
-      localStorage.getItem(WAREHOUSES_STORAGE_KEY),
-    );
-
-    if (Array.isArray(storedWarehouses) && storedWarehouses.length > 0) {
-      return storedWarehouses;
-    }
-  } catch {
-    localStorage.removeItem(WAREHOUSES_STORAGE_KEY);
-  }
-
-  return defaultWarehouses;
-};
 
 const getStoredInventories = () => {
   try {
@@ -59,26 +36,6 @@ const getStoredInventories = () => {
 
   return {};
 };
-
-const firstFilledValue = (record, keys) => {
-  for (const key of keys) {
-    const value = record[key];
-    if (value !== undefined && value !== null && String(value).trim() !== "") {
-      return String(value).trim();
-    }
-  }
-
-  return "";
-};
-
-const normalizeInventoryRows = (records) =>
-  records
-    .map((record) => ({
-      id: createWarehouseId(),
-      code: firstFilledValue(record, ["کد", "کد کالا"]),
-      quantity: firstFilledValue(record, ["موجودی", "موجودي"]),
-    }))
-    .filter((item) => item.code && item.quantity);
 
 const getUserId = (user) => user?._id || user?.id;
 const isAdminUser = (user) => user?.role === "admin";
@@ -189,6 +146,10 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
   const [inventoryMessage, setInventoryMessage] = useState("");
   const [inventoryError, setInventoryError] = useState("");
   const [isInventorySaving, setIsInventorySaving] = useState(false);
+  const [warehousesLoading, setWarehousesLoading] = useState(false);
+  const [warehouseItemsLoading, setWarehouseItemsLoading] = useState(false);
+  const [warehouseSearchQuery, setWarehouseSearchQuery] = useState("");
+  const [isWarehouseCreating, setIsWarehouseCreating] = useState(false);
   const [productsUploadFile, setProductsUploadFile] = useState(null);
   const [quantityUploadFile, setQuantityUploadFile] = useState(null);
   const [uploadState, setUploadState] = useState({
@@ -222,12 +183,8 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
   const [companyFileInputKey, setCompanyFileInputKey] = useState(0);
   const [isCompanyNameDropdownOpen, setIsCompanyNameDropdownOpen] =
     useState(false);
-  const [warehouses, setWarehouses] = useState(getStoredWarehouses);
+  const [warehouses, setWarehouses] = useState([]);
   const [inventories, setInventories] = useState(getStoredInventories);
-
-  useEffect(() => {
-    localStorage.setItem(WAREHOUSES_STORAGE_KEY, JSON.stringify(warehouses));
-  }, [warehouses]);
 
   useEffect(() => {
     localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(inventories));
@@ -235,14 +192,19 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
 
   useEffect(() => {
     if (!selectedWarehouseId && warehouses.length > 0) {
-      setSelectedWarehouseId(warehouses[0].id);
+      setSelectedWarehouseId(getWarehouseId(warehouses[0]));
     }
   }, [selectedWarehouseId, warehouses]);
 
   useEffect(() => {
+    setWarehouseSearchQuery("");
+  }, [selectedWarehouseDetailsId]);
+
+  useEffect(() => {
     if (
       !isAdmin &&
-      (activeSection === "uploads" ||
+      (activeSection === "warehouse" ||
+        activeSection === "uploads" ||
         activeSection === "users" ||
         activeSection === "companyPrices" ||
         activeSection === "companyFileUpload")
@@ -250,6 +212,65 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
       setActiveSection("dashboard");
     }
   }, [activeSection, isAdmin]);
+
+  const syncWarehouseItemsToCache = (warehouseId, items) => {
+    setInventories((currentInventories) => ({
+      ...currentInventories,
+      [warehouseId]: {
+        warehouseId,
+        updatedAt: new Date().toISOString(),
+        items,
+      },
+    }));
+  };
+
+  const loadWarehouses = async () => {
+    if (!isAdmin) return;
+
+    setWarehousesLoading(true);
+    setInventoryError("");
+
+    try {
+      const nextWarehouses = await getWarehouses();
+      setWarehouses(nextWarehouses);
+
+      if (!selectedWarehouseId && nextWarehouses.length > 0) {
+        setSelectedWarehouseId(getWarehouseId(nextWarehouses[0]));
+      }
+    } catch (error) {
+      setInventoryError(error.message || "دریافت لیست انبارها ناموفق بود.");
+    } finally {
+      setWarehousesLoading(false);
+    }
+  };
+
+  const loadWarehouseItems = async (warehouseId) => {
+    if (!isAdmin || !warehouseId) return;
+
+    setWarehouseItemsLoading(true);
+    setInventoryError("");
+
+    try {
+      const items = await getWarehouseItems(warehouseId);
+      syncWarehouseItemsToCache(warehouseId, items);
+    } catch (error) {
+      setInventoryError(error.message || "دریافت آیتم‌های انبار ناموفق بود.");
+    } finally {
+      setWarehouseItemsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === "warehouse" && isAdmin) {
+      loadWarehouses();
+    }
+  }, [activeSection, isAdmin]);
+
+  useEffect(() => {
+    if (selectedWarehouseDetailsId && isAdmin) {
+      loadWarehouseItems(selectedWarehouseDetailsId);
+    }
+  }, [selectedWarehouseDetailsId, isAdmin]);
 
   const loadUsers = async () => {
     if (!isAdmin) return;
@@ -316,12 +337,24 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
 
   const selectedWarehouseDetails = useMemo(
     () =>
-      warehouses.find((warehouse) => warehouse.id === selectedWarehouseDetailsId),
+      warehouses.find(
+        (warehouse) => getWarehouseId(warehouse) === selectedWarehouseDetailsId,
+      ),
     [selectedWarehouseDetailsId, warehouses],
   );
 
   const selectedWarehouseInventory =
     inventories[selectedWarehouseDetailsId]?.items || [];
+  const filteredWarehouseInventory = useMemo(() => {
+    return filterByProductSearch(
+      selectedWarehouseInventory,
+      warehouseSearchQuery,
+      (item) => ({
+        title: item.title || "",
+        barcode: item.code || item.barcode || item.productCode || "",
+      }),
+    );
+  }, [selectedWarehouseInventory, warehouseSearchQuery]);
   const companyNameOptions = companies
     .map((company) => getCompanyName(company))
     .filter((companyName) => companyName && companyName !== "-");
@@ -333,9 +366,9 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
 
   const navigationItems = [
     { id: "dashboard", label: "داشبورد مدیریت" },
-    { id: "warehouse", label: "مدیریت انبار" },
     ...(isAdmin
       ? [
+          { id: "warehouse", label: "مدیریت انبار" },
           { id: "uploads", label: "آپلود فایل‌ها" },
           { id: "companyPrices", label: "مدیریت لیست قیمت‌ها" },
           { id: "users", label: "مدیریت کاربران" },
@@ -365,6 +398,7 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
       description:
         "ساخت، مشاهده و حذف انبارها، بررسی موجودی ذخیره‌شده و به‌روزرسانی فایل موجودی.",
       sectionId: "warehouse",
+      adminOnly: true,
     },
     {
       id: "company-prices",
@@ -474,18 +508,30 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
     }
   };
 
-  const handleCreateWarehouse = (event) => {
+  const handleCreateWarehouse = async (event) => {
     event.preventDefault();
 
     const name = warehouseName.trim();
     if (!name) return;
 
-    const newWarehouse = { id: createWarehouseId(), name };
+    setIsWarehouseCreating(true);
+    setInventoryError("");
+    setInventoryMessage("");
 
-    setWarehouses((currentWarehouses) => [...currentWarehouses, newWarehouse]);
-    setSelectedWarehouseId(newWarehouse.id);
-    setWarehouseName("");
-    setIsCreateBoxOpen(false);
+    try {
+      const newWarehouse = await createWarehouse({ name, isActive: true });
+      const newWarehouseId = getWarehouseId(newWarehouse);
+
+      setWarehouses((currentWarehouses) => [...currentWarehouses, newWarehouse]);
+      setSelectedWarehouseId(newWarehouseId || "");
+      setWarehouseName("");
+      setIsCreateBoxOpen(false);
+      setInventoryMessage("انبار با موفقیت ساخته شد.");
+    } catch (error) {
+      setInventoryError(error.message || "ساخت انبار ناموفق بود.");
+    } finally {
+      setIsWarehouseCreating(false);
+    }
   };
 
   const openDeleteWarehousePopup = (warehouse) => {
@@ -497,34 +543,18 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
   };
 
   const confirmDeleteWarehouse = () => {
-    if (!warehouseToDelete) return;
-
-    setWarehouses((currentWarehouses) =>
-      currentWarehouses.filter((warehouse) => warehouse.id !== warehouseToDelete.id),
-    );
-    setInventories((currentInventories) => {
-      const nextInventories = { ...currentInventories };
-      delete nextInventories[warehouseToDelete.id];
-      return nextInventories;
-    });
-
-    if (selectedWarehouseId === warehouseToDelete.id) {
-      const nextWarehouse = warehouses.find(
-        (warehouse) => warehouse.id !== warehouseToDelete.id,
-      );
-      setSelectedWarehouseId(nextWarehouse?.id || "");
-    }
-
-    if (selectedWarehouseDetailsId === warehouseToDelete.id) {
-      setSelectedWarehouseDetailsId("");
-    }
-
-    setInventoryMessage("انبار با موفقیت حذف شد.");
-    setInventoryError("");
+    setInventoryError("API حذف انبار هنوز تعریف نشده است.");
+    setInventoryMessage("");
     setWarehouseToDelete(null);
   };
 
   const openInventoryPopup = () => {
+    if (warehouses.length === 0) {
+      setInventoryError("ابتدا باید یک انبار بسازید.");
+      setInventoryMessage("");
+      return;
+    }
+
     setInventoryError("");
     setInventoryMessage("");
     setIsInventoryPopupOpen(true);
@@ -546,35 +576,15 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
     setInventoryMessage("");
 
     try {
-      const records = await readExcelFile(inventoryFile, [
-        "کد",
-        "کد کالا",
-        "موجودی",
-        "موجودي",
-      ]);
-      const items = normalizeInventoryRows(records);
+      await uploadWarehouseProductsExcel(selectedWarehouseId, inventoryFile);
+      const items = await getWarehouseItems(selectedWarehouseId);
+      syncWarehouseItemsToCache(selectedWarehouseId, items);
 
-      if (items.length === 0) {
-        throw new Error("ستون‌های کد و موجودی در فایل پیدا نشد یا فایل خالی است.");
-      }
-
-      setInventories((currentInventories) => ({
-        ...currentInventories,
-        [selectedWarehouseId]: {
-          warehouseId: selectedWarehouseId,
-          fileName: inventoryFile.name,
-          updatedAt: new Date().toISOString(),
-          items,
-        },
-      }));
-
-      setInventoryMessage(
-        `${items.length.toLocaleString("fa-IR")} ردیف موجودی ذخیره شد.`,
-      );
+      setInventoryMessage("فایل موجودی انبار با موفقیت آپلود شد.");
       setInventoryFile(null);
       setIsInventoryPopupOpen(false);
     } catch (error) {
-      setInventoryError(error.message || "خطا در خواندن فایل موجودی.");
+      setInventoryError(error.message || "آپلود فایل موجودی ناموفق بود.");
     } finally {
       setIsInventorySaving(false);
     }
@@ -1487,31 +1497,54 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                 </p>
               </div>
 
+              <div dir="rtl" className="flex items-center justify-start">
+                <SearchBox
+                  query={warehouseSearchQuery}
+                  onChange={setWarehouseSearchQuery}
+                />
+              </div>
+
               <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
-                <div className="grid grid-cols-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
-                  <span>کد</span>
-                  <span>موجودی</span>
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {selectedWarehouseInventory.length === 0 ? (
-                    <p className={`px-4 py-8 text-center text-sm ${theme.colors.text.muted}`}>
-                      هنوز موجودی برای این انبار ثبت نشده است.
-                    </p>
-                  ) : (
-                    selectedWarehouseInventory.map((item) => (
-                      <div
-                        key={item.id}
-                        className="grid grid-cols-2 gap-3 px-4 py-4 text-sm"
-                      >
-                        <span className="break-all font-mono text-slate-800">
-                          {item.code}
-                        </span>
-                        <span className="font-bold text-slate-800">
-                          {item.quantity}
-                        </span>
-                      </div>
-                    ))
-                  )}
+                <div className="overflow-x-auto">
+                  <div className="min-w-[560px]">
+                    <div className="grid grid-cols-[1.4fr_0.8fr_0.5fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
+                      <span>عنوان محصول</span>
+                      <span>کد</span>
+                      <span>موجودی</span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {warehouseItemsLoading ? (
+                        <p className={`px-4 py-8 text-center text-sm ${theme.colors.text.muted}`}>
+                          در حال دریافت آیتم‌های انبار...
+                        </p>
+                      ) : selectedWarehouseInventory.length === 0 ? (
+                        <p className={`px-4 py-8 text-center text-sm ${theme.colors.text.muted}`}>
+                          هنوز موجودی برای این انبار ثبت نشده است.
+                        </p>
+                      ) : filteredWarehouseInventory.length === 0 ? (
+                        <p className={`px-4 py-8 text-center text-sm ${theme.colors.text.muted}`}>
+                          نتیجه‌ای برای «{warehouseSearchQuery}» یافت نشد.
+                        </p>
+                      ) : (
+                        filteredWarehouseInventory.map((item) => (
+                          <div
+                            key={item.id || item.code}
+                            className="grid grid-cols-[1.4fr_0.8fr_0.5fr] gap-3 px-4 py-4 text-sm"
+                          >
+                            <span className="font-bold leading-7 text-slate-800">
+                              {item.title || "-"}
+                            </span>
+                            <span className="break-all font-mono text-slate-800">
+                              {item.code || "-"}
+                            </span>
+                            <span className="font-bold text-slate-800">
+                              {item.quantity}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -1546,7 +1579,8 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                   <button
                     type="button"
                     onClick={openInventoryPopup}
-                    className="rounded-md bg-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400"
+                    disabled={warehousesLoading || warehouses.length === 0}
+                    className="rounded-md bg-amber-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     بروزرسانی موجودی
                   </button>
@@ -1582,9 +1616,10 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                     />
                     <button
                       type="submit"
-                      className="min-h-11 rounded-md bg-amber-500 px-5 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400"
+                      disabled={isWarehouseCreating}
+                      className="min-h-11 rounded-md bg-amber-500 px-5 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      ساخت
+                      {isWarehouseCreating ? "در حال ساخت..." : "ساخت"}
                     </button>
                   </div>
                 </form>
@@ -1596,36 +1631,53 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                   <span>آیتم‌ها</span>
                 </div>
                 <div className="divide-y divide-slate-100">
-                  {warehouses.map((warehouse) => (
-                    <div
-                      key={warehouse.id}
-                      className="grid grid-cols-1 gap-3 px-4 py-4 text-right text-sm transition-colors hover:bg-slate-50 sm:grid-cols-[1fr_0.8fr_auto] sm:items-center"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setSelectedWarehouseDetailsId(warehouse.id)}
-                        className="text-right font-bold text-slate-800"
-                      >
-                        {warehouse.name}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedWarehouseDetailsId(warehouse.id)}
-                        className="text-right text-sm font-bold text-slate-700"
-                      >
-                        {(
-                          inventories[warehouse.id]?.items?.length || 0
-                        ).toLocaleString("fa-IR")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDeleteWarehousePopup(warehouse)}
-                        className="rounded-md border border-red-200 px-3 py-2 text-sm font-bold text-red-600 transition-colors hover:bg-red-50"
-                      >
-                        حذف
-                      </button>
-                    </div>
-                  ))}
+                  {warehousesLoading && warehouses.length === 0 ? (
+                    <p className={`px-4 py-8 text-center text-sm ${theme.colors.text.muted}`}>
+                      در حال دریافت انبارها...
+                    </p>
+                  ) : warehouses.length === 0 ? (
+                    <p className={`px-4 py-8 text-center text-sm ${theme.colors.text.muted}`}>
+                      انباری برای نمایش وجود ندارد.
+                    </p>
+                  ) : (
+                    warehouses.map((warehouse) => {
+                      const warehouseId = getWarehouseId(warehouse);
+
+                      return (
+                        <div
+                          key={warehouseId}
+                          className="grid grid-cols-1 gap-3 px-4 py-4 text-right text-sm transition-colors hover:bg-slate-50 sm:grid-cols-[1fr_0.8fr_auto] sm:items-center"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWarehouseDetailsId(warehouseId)}
+                            className="text-right font-bold text-slate-800"
+                          >
+                            {warehouse.name}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWarehouseDetailsId(warehouseId)}
+                            className="text-right text-sm font-bold text-slate-700"
+                          >
+                            {(
+                              warehouse.itemsCount ??
+                              warehouse.productsCount ??
+                              inventories[warehouseId]?.items?.length ??
+                              0
+                            ).toLocaleString("fa-IR")}
+                          </button>
+                          <button
+                            type="button"
+                            disabled
+                            className="cursor-not-allowed rounded-md border border-slate-200 px-3 py-2 text-sm font-bold text-slate-400"
+                          >
+                            حذف تعریف نشده
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </section>
@@ -1696,11 +1748,15 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                   onChange={(event) => setSelectedWarehouseId(event.target.value)}
                   className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                 >
-                  {warehouses.map((warehouse) => (
-                    <option key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </option>
-                  ))}
+                  {warehouses.map((warehouse) => {
+                    const warehouseId = getWarehouseId(warehouse);
+
+                    return (
+                      <option key={warehouseId} value={warehouseId}>
+                        {warehouse.name}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>

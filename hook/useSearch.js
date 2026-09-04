@@ -31,14 +31,14 @@ const matchesPrefixWord = (text, word) => {
     return text.includes(word);
 };
 
-const useSearch = (products) => {
-    const [query, setQuery] = useState("");
-
-    useEffect(() => {
-        console.log(products[0]);
-    }, [products]);
-
-    const filteredProducts = useMemo(() => {
+export const filterByProductSearch = (
+    products,
+    query,
+    getSearchFields = (product) => ({
+        title: product["عنوان کالا"] || "",
+        barcode: product["بارکد کالا"] || "",
+    }),
+) => {
         const normalizedQuery = normalizePersian(query).trim();
 
         if (!normalizedQuery) return products;
@@ -61,8 +61,10 @@ const useSearch = (products) => {
         if (meaningfulCompleted.length === 0 && !effectivePrefix) return products;
 
         return products.filter((p) => {
-            const title = normalizePersian(p["عنوان کالا"] || "");
-            const productBarcode = String(p["بارکد کالا"] || "");
+            const { title: rawTitle = "", barcode: rawBarcode = "" } =
+                getSearchFields(p) || {};
+            const title = normalizePersian(rawTitle);
+            const productBarcode = String(rawBarcode || "");
 
             const completedMatch = meaningfulCompleted.every(w =>
                 matchesCompletedWord(title, w)
@@ -78,6 +80,17 @@ const useSearch = (products) => {
 
             return matchTitle || matchBarcode;
         });
+};
+
+const useSearch = (products) => {
+    const [query, setQuery] = useState("");
+
+    useEffect(() => {
+        console.log(products[0]);
+    }, [products]);
+
+    const filteredProducts = useMemo(() => {
+        return filterByProductSearch(products, query);
     }, [products, query]);
 
     return { query, setQuery, filteredProducts };
