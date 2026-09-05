@@ -103,7 +103,7 @@ const useProductData = () => {
         setProducts(newProducts);
         cacheService.write(CACHE_KEY, newProducts);
         setProductSource(PRODUCT_SOURCE.LOCAL_IMPORT);
-        setIsUsingCache(false);
+        setIsUsingCache(true);
         setStatus(STATUS.SUCCESS);
     }, []);
 

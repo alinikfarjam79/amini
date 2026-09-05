@@ -352,6 +352,12 @@ export default function App() {
             message="داده جدیدی از سرور دریافت نشد. اطلاعات از کش دستگاه خوانده می‌شود."
           />
         )}
+        {isUsingCache && !showNetworkWarning && (
+          <Banner
+            variant="warning"
+            message="اطلاعات از لوکال دستگاه خوانده می‌شود."
+          />
+        )}
         {showNetworkBlocking && (
           <Banner
             variant="danger"

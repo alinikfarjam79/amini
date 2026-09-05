@@ -1175,6 +1175,7 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                               <img
                                 src={upload.url}
                                 alt={upload.title}
+                                crossOrigin="anonymous"
                                 className="h-48 w-full object-cover"
                               />
                             ) : (
@@ -1330,12 +1331,6 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                 onFileChange={setProductsUploadFile}
               />
 
-              <UploadCard
-                type="quantity"
-                title="آپلود مقادیر محصولات"
-                file={quantityUploadFile}
-                onFileChange={setQuantityUploadFile}
-              />
             </section>
           ) : activeSection === "users" && isAdmin ? (
             <section className="space-y-5">
@@ -1507,10 +1502,10 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
               <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                   <div className="min-w-[560px]">
-                    <div className="grid grid-cols-[1.4fr_0.8fr_0.5fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
+                    <div className="grid grid-cols-[1.4fr_0.5fr_0.8fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
                       <span>عنوان محصول</span>
-                      <span>کد</span>
                       <span>موجودی</span>
+                      <span>کد</span>
                     </div>
                     <div className="divide-y divide-slate-100">
                       {warehouseItemsLoading ? (
@@ -1529,16 +1524,16 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                         filteredWarehouseInventory.map((item) => (
                           <div
                             key={item.id || item.code}
-                            className="grid grid-cols-[1.4fr_0.8fr_0.5fr] gap-3 px-4 py-4 text-sm"
+                            className="grid grid-cols-[1.4fr_0.5fr_0.8fr] gap-3 px-4 py-4 text-sm"
                           >
                             <span className="font-bold leading-7 text-slate-800">
                               {item.title || "-"}
                             </span>
-                            <span className="break-all font-mono text-slate-800">
-                              {item.code || "-"}
-                            </span>
                             <span className="font-bold text-slate-800">
                               {item.quantity}
+                            </span>
+                            <span className="break-all font-mono text-slate-800">
+                              {item.code || "-"}
                             </span>
                           </div>
                         ))
