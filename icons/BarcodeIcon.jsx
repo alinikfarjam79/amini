@@ -11,8 +11,11 @@ export function BarcodeIcon({ className = "w-5 h-5" }) {
       className={className}
       aria-hidden="true"
     >
-      <path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14" strokeWidth="1.5" />
-      <path d="M3 5h2M3 19h2M19 5h2M19 19h2" strokeWidth="2" />
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="15" y="3" width="6" height="6" rx="1" />
+      <rect x="3" y="15" width="6" height="6" rx="1" />
+      <path d="M12 4h1M12 8h1M16 12h1M20 12h1M12 16h1M16 16h1M20 16h1M12 20h1M16 20h5" />
+      <path d="M16 20v-1M20 16v1M12 12h1v1h-1z" />
     </svg>
   );
 }
