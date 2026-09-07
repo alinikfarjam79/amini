@@ -831,7 +831,7 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
           htmlFor={inputId}
           className={`mt-5 block text-sm font-bold ${theme.colors.text.primary}`}
         >
-          فایل XLS یا XLSX
+          انتخاب فایل XLS , XLSX
         </label>
         <input
           id={inputId}
@@ -1479,7 +1479,7 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
             <section className="space-y-5">
               <UploadCard
                 type="products"
-                title="آپلود لیست محصولات"
+                title="آپلود لیست قیمت محصولات"
                 file={productsUploadFile}
                 onFileChange={setProductsUploadFile}
               />

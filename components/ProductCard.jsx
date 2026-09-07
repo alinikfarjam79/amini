@@ -11,6 +11,11 @@ const formatPrice = (raw) => {
 const formatInventory = (value) => Number(value || 0).toLocaleString("fa-IR");
 
 const ProductCard = ({ product, inventory = 0 }) => {
+  const inventoryNumber = Number(inventory || 0);
+  const inventoryBadgeClass =
+    inventoryNumber <= 0
+      ? "border-red-500/30 bg-red-500/10 text-red-700"
+      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
   const {
     "عنوان کالا": Title,
     "کد کالا": code,
@@ -79,7 +84,7 @@ const ProductCard = ({ product, inventory = 0 }) => {
           <span className={`text-xs font-medium ${theme.colors.text.secondary}`}>
             موجودی:
           </span>
-          <span className="inline-flex items-center px-3 py-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-sm font-bold text-emerald-700">
+          <span className={`inline-flex items-center px-3 py-1 rounded-lg border text-sm font-bold ${inventoryBadgeClass}`}>
             {formatInventory(inventory)}
           </span>
         </div>
