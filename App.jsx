@@ -390,10 +390,20 @@ export default function App() {
           dir="rtl"
           className="flex items-center sticky top-2 z-10 justify-start gap-3 flex-wrap"
         >
-          <SearchBox query={query} onChange={setQuery} />
-          <button onClick={openScanner} className="border rounded-md p-1">
-            <BarcodeIcon />
-          </button>
+          <SearchBox
+            query={query}
+            onChange={setQuery}
+            leftAction={
+              <button
+                type="button"
+                onClick={openScanner}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-500/70 text-slate-300 transition-colors hover:border-slate-300 hover:text-white"
+                aria-label="باز کردن اسکنر QR"
+              >
+                <BarcodeIcon className="h-4 w-4" />
+              </button>
+            }
+          />
         </div>
 
         {/* ── Action bar ── */}

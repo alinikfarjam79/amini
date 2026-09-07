@@ -1,6 +1,6 @@
 import { theme } from "../config/theme";
 
-export const SearchBox = ({ query, onChange }) => (
+export const SearchBox = ({ query, onChange, leftAction = null }) => (
   <div className="relative w-full sm:w-80">
     <span className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
       🔍
@@ -12,7 +12,7 @@ export const SearchBox = ({ query, onChange }) => (
       onChange={(e) => onChange(e.target.value)}
       placeholder="جستجو بر اساس نام کالا یا بارکد..."
       className={`
-                w-full pr-9 pl-4 py-2 rounded-xl text-sm text-white
+                w-full pr-9 ${leftAction ? "pl-20" : "pl-4"} py-2 rounded-xl text-sm text-white
                 ${theme.colors.background.input}
                 ${theme.colors.border.surface}
                 ${theme.colors.border.focus}
@@ -20,10 +20,16 @@ export const SearchBox = ({ query, onChange }) => (
                 outline-none transition-all duration-200
             `}
     />
+    {leftAction && (
+      <div className="absolute inset-y-0 left-2 flex items-center">
+        {leftAction}
+      </div>
+    )}
     {query && (
       <button
+        type="button"
         onClick={() => onChange("")}
-        className="absolute inset-y-0 left-3 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
+        className={`absolute inset-y-0 ${leftAction ? "left-12" : "left-3"} flex items-center text-slate-500 hover:text-slate-300 transition-colors`}
         aria-label="پاک کردن جستجو"
       >
         ✕
