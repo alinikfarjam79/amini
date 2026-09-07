@@ -397,7 +397,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={openScanner}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-500/70 text-slate-300 transition-colors hover:border-slate-300 hover:text-white"
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-white bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-100"
                 aria-label="باز کردن اسکنر QR"
               >
                 <BarcodeIcon className="h-4 w-4" />
