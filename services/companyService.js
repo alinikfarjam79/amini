@@ -125,3 +125,15 @@ export const uploadCompanyFile = async ({
 
   return parseResponse(response);
 };
+
+export const deleteCompanyFile = async (companyId, fileId) => {
+  const response = await fetch(
+    `${API_BASE_URL}/api/companies/${companyId}/files/${fileId}`,
+    {
+      method: "DELETE",
+      headers: authHeaders(),
+    },
+  );
+
+  return parseResponse(response);
+};

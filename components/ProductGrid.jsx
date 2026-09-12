@@ -56,6 +56,8 @@ export const ProductGrid = ({
   isLoading,
   searchQuery = "",
   inventoryByCode = {},
+  isAdmin = false,
+  onUpdateProductAlias,
 }) => {
   const { visibleProducts, hasMore, sentinelRef, total } =
     useInfiniteScroll(products);
@@ -95,6 +97,8 @@ export const ProductGrid = ({
               key={`${product["کد کالا"] || product["بارکد کالا"]}-${index}`}
               product={product}
               inventory={getProductInventory(product)}
+              isAdmin={isAdmin}
+              onUpdateAlias={onUpdateProductAlias}
             />
           ))
         )}

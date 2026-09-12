@@ -10,6 +10,7 @@ import { SearchBox } from "./components/SearchBox";
 import { SyncButton } from "./components/SyncButton";
 import PriceChangesPage from "./components/PriceChangesPage";
 import { theme } from "./config/theme";
+import { updateProductAlias as patchProductAlias } from "./services/dataService";
 import useBarcodeScanner from "./hook/useBarcodeScanner";
 import useProductData from "./hook/useProductData";
 import useSearch from "./hook/useSearch";
@@ -131,6 +132,7 @@ export default function App() {
     sync,
     STATUS,
     replaceProducts,
+    updateProductAlias,
   } =
     useProductData();
   const { query, setQuery, filteredProducts } = useSearch(products);
@@ -298,6 +300,11 @@ export default function App() {
     return { ok: true };
   };
 
+  const handleUpdateProductAlias = async (productId, alias) => {
+    const nextAlias = await patchProductAlias(productId, alias);
+    updateProductAlias(productId, nextAlias);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem(USER_STORAGE_KEY);
     clearAuthCookie();
@@ -340,6 +347,8 @@ export default function App() {
         productCount={products.length}
         isUsingCache={isUsingCache}
         currentUser={currentUser}
+        onImportXls={() => fileInputRef.current?.click()}
+        isImportingXls={importLoading}
         onDashboard={() => navigate("/dashboard")}
         onLogout={handleLogout}
       />
@@ -441,39 +450,6 @@ export default function App() {
               className="hidden"
               onChange={handleFileChange}
             />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importLoading}
-              className={`
-                inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
-                text-sm font-bold tracking-wide border transition-all duration-200
-                disabled:opacity-50 disabled:cursor-not-allowed active:scale-95
-                border-slate-300 text-slate-700 hover:bg-slate-100
-              `}
-            >
-              {importLoading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-                  در حال خواندن...
-                </>
-              ) : (
-                <>
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className="w-4 h-4"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  وارد کردن XLS
-                </>
-              )}
-            </button>
-
             {/* ── Sync ── */}
             <SyncButton onSync={sync} isLoading={isLoading} />
           </div>
@@ -493,6 +469,8 @@ export default function App() {
           isLoading={isLoading}
           searchQuery={query}
           inventoryByCode={inventoryByCode}
+          isAdmin={currentUser?.role === "admin"}
+          onUpdateProductAlias={handleUpdateProductAlias}
         />
       </main>
 

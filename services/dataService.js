@@ -23,6 +23,7 @@ const normalizeApiProduct = (product) => ({
   [PRODUCT_COLUMNS.code]: product.productCode ?? "",
   [PRODUCT_COLUMNS.barcode]: product.barcode ?? product.productCode ?? "",
   [PRODUCT_COLUMNS.price]: product.originalPrice ?? 0,
+  alias: product.alias ?? "",
   quantity: product.quantity ?? 0,
   _id: product._id,
   createdAt: product.createdAt,
@@ -69,4 +70,33 @@ export const loadProducts = async () => {
   return {
     products: products.map(normalizeApiProduct),
   };
+};
+
+export const updateProductAlias = async (productId, alias) => {
+  const token = getCookie(TOKEN_COOKIE_NAME);
+
+  const response = await fetch(`${PRODUCTS_URL}/${productId}/alias`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ alias }),
+  });
+
+  let payload = null;
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.message || "ویرایش اسم مستعار ناموفق بود.");
+  }
+
+  const product = payload?.data?.product || payload?.data;
+
+  return product?.alias ?? alias;
 };

@@ -7,6 +7,7 @@ import {
   uploadQuantityExcel,
 } from "../services/productUploadService";
 import {
+  deleteCompanyFile,
   normalizeCompanyUploads,
   searchCompanies,
   uploadCompanyFile,
@@ -123,12 +124,12 @@ const getUploadDateTime = (upload) => {
 
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 };
-const sortUploadsByOldest = (uploads) =>
+const sortUploadsByNewest = (uploads) =>
   [...uploads].sort((firstUpload, secondUpload) => {
     const secondTime = getUploadDateTime(secondUpload);
     const firstTime = getUploadDateTime(firstUpload);
 
-    return firstTime - secondTime;
+    return secondTime - firstTime;
   });
 const translateProductUploadError = (message = "") => {
   if (message.includes("قیمت اصلی") && message.includes("valid number")) {
@@ -215,8 +216,12 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companiesError, setCompaniesError] = useState("");
   const [selectedCompany, setSelectedCompany] = useState(null);
+  const [companyUploadReturnCompany, setCompanyUploadReturnCompany] =
+    useState(null);
   const [companyUploads, setCompanyUploads] = useState([]);
   const [companyUploadsError, setCompanyUploadsError] = useState("");
+  const [companyFileToDelete, setCompanyFileToDelete] = useState(null);
+  const [isCompanyFileDeleting, setIsCompanyFileDeleting] = useState(false);
   const [companyFileTitle, setCompanyFileTitle] = useState("");
   const [companyFileCompanyName, setCompanyFileCompanyName] = useState("");
   const [companyFileDate, setCompanyFileDate] = useState("");
@@ -224,6 +229,8 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
   const [companyFileUploadError, setCompanyFileUploadError] = useState("");
   const [companyFileUploadMessage, setCompanyFileUploadMessage] = useState("");
   const [isCompanyFileUploading, setIsCompanyFileUploading] = useState(false);
+  const [isCompanyFileUploadPopupOpen, setIsCompanyFileUploadPopupOpen] =
+    useState(false);
   const [companyFileInputKey, setCompanyFileInputKey] = useState(0);
   const [isCompanyNameDropdownOpen, setIsCompanyNameDropdownOpen] =
     useState(false);
@@ -303,6 +310,65 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
       setWarehouseItemsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeSection !== "warehouse" || !isAdmin || warehouses.length === 0) {
+      return undefined;
+    }
+
+    const missingWarehouseIds = warehouses
+      .map((warehouse) => getWarehouseId(warehouse))
+      .filter(
+        (warehouseId) =>
+          warehouseId &&
+          !Object.prototype.hasOwnProperty.call(inventories, warehouseId),
+      );
+
+    if (missingWarehouseIds.length === 0) {
+      return undefined;
+    }
+
+    let isCancelled = false;
+
+    const loadMissingWarehouseCounts = async () => {
+      try {
+        const results = await Promise.all(
+          missingWarehouseIds.map(async (warehouseId) => ({
+            warehouseId,
+            items: await getWarehouseItems(warehouseId),
+          })),
+        );
+
+        if (isCancelled) return;
+
+        setInventories((currentInventories) => {
+          const nextInventories = { ...currentInventories };
+
+          results.forEach(({ warehouseId, items }) => {
+            nextInventories[warehouseId] = {
+              warehouseId,
+              updatedAt: new Date().toISOString(),
+              items,
+            };
+          });
+
+          return nextInventories;
+        });
+      } catch (error) {
+        if (!isCancelled) {
+          setInventoryError(
+            error.message || "دریافت آیتم‌های انبارها ناموفق بود.",
+          );
+        }
+      }
+    };
+
+    loadMissingWarehouseCounts();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeSection, isAdmin, warehouses, inventories]);
 
   useEffect(() => {
     if (activeSection === "warehouse" && isAdmin) {
@@ -487,7 +553,7 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
 
     try {
       const uploads = normalizeCompanyUploads(company);
-      setCompanyUploads(sortUploadsByOldest(uploads));
+      setCompanyUploads(sortUploadsByNewest(uploads));
     } catch (error) {
       setCompanyUploadsError(
         error.message || "خطا در خواندن فایل‌های شرکت.",
@@ -495,17 +561,31 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
     }
   };
 
-  const openCompanyFileUploadPage = () => {
-    setSelectedCompany(null);
-    setCompanyUploads([]);
+  const openCompanyFileUploadPage = (company = null) => {
+    const isCompanyContext =
+      company &&
+      typeof company === "object" &&
+      !("nativeEvent" in company) &&
+      getCompanyName(company) !== "-";
+    const nextCompany = isCompanyContext ? company : null;
+    const companyName = nextCompany ? getCompanyName(nextCompany) : "";
+
+    setCompanyUploadReturnCompany(nextCompany);
     setCompanyUploadsError("");
     setCompanyFileUploadError("");
     setCompanyFileUploadMessage("");
-    setActiveSection("companyFileUpload");
+    setCompanyFileCompanyName(companyName !== "-" ? companyName : "");
+    setIsCompanyFileUploadPopupOpen(true);
   };
 
   const backToCompanyPrices = () => {
     setActiveSection("companyPrices");
+    setIsCompanyFileUploadPopupOpen(false);
+    setIsCompanyNameDropdownOpen(false);
+    if (companyUploadReturnCompany) {
+      setSelectedCompany(companyUploadReturnCompany);
+      setCompanyUploads(sortUploadsByNewest(normalizeCompanyUploads(companyUploadReturnCompany)));
+    }
     setCompanyFileUploadError("");
     setCompanyFileUploadMessage("");
   };
@@ -541,14 +621,104 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
         publishDate: companyFileDate,
         file: companyFile,
       });
+      const refreshedCompanies = await searchCompanies(companyName);
+      const refreshedCompany =
+        refreshedCompanies.find(
+          (company) => getCompanyName(company) === companyName,
+        ) || companyUploadReturnCompany;
+
+      setCompanies(refreshedCompanies);
       setCompanyFileUploadMessage("فایل با موفقیت ثبت شد.");
       resetCompanyFileForm();
       setCompanySearchQuery(companyName);
-      setActiveSection("companyPrices");
+      if (companyUploadReturnCompany && refreshedCompany) {
+        setCompanyUploadReturnCompany(refreshedCompany);
+        setSelectedCompany(refreshedCompany);
+        setCompanyUploads(
+          sortUploadsByNewest(normalizeCompanyUploads(refreshedCompany)),
+        );
+      }
+      setIsCompanyFileUploadPopupOpen(false);
     } catch (error) {
       setCompanyFileUploadError(error.message || "ثبت فایل ناموفق بود.");
     } finally {
       setIsCompanyFileUploading(false);
+    }
+  };
+
+  const openDeleteCompanyFilePopup = (upload) => {
+    const companyId = getCompanyId(selectedCompany);
+    const fileId = upload?.id || upload?._id;
+
+    setCompanyUploadsError("");
+
+    if (!companyId || !fileId) {
+      setCompanyUploadsError("شناسه شرکت یا فایل برای حذف پیدا نشد.");
+      return;
+    }
+
+    setCompanyFileToDelete({ upload, companyId, fileId });
+  };
+
+  const closeDeleteCompanyFilePopup = () => {
+    if (isCompanyFileDeleting) return;
+
+    setCompanyFileToDelete(null);
+  };
+
+  const confirmDeleteCompanyFile = async () => {
+    if (!companyFileToDelete) return;
+
+    setIsCompanyFileDeleting(true);
+    setCompanyUploadsError("");
+
+    try {
+      await deleteCompanyFile(
+        companyFileToDelete.companyId,
+        companyFileToDelete.fileId,
+      );
+
+      setCompanyUploads((currentUploads) =>
+        currentUploads.filter(
+          (upload) =>
+            (upload.id || upload._id) !== companyFileToDelete.fileId,
+        ),
+      );
+      setCompanies((currentCompanies) =>
+        currentCompanies.map((company) => {
+          if (getCompanyId(company) !== companyFileToDelete.companyId) {
+            return company;
+          }
+
+          const normalizedUploads = normalizeCompanyUploads(company).filter(
+            (upload) => (upload.id || upload._id) !== companyFileToDelete.fileId,
+          );
+
+          return {
+            ...company,
+            uploads: normalizedUploads,
+            files: normalizedUploads,
+          };
+        }),
+      );
+      setSelectedCompany((currentCompany) => {
+        if (!currentCompany) return currentCompany;
+
+        const normalizedUploads = normalizeCompanyUploads(currentCompany).filter(
+          (upload) => (upload.id || upload._id) !== companyFileToDelete.fileId,
+        );
+
+        return {
+          ...currentCompany,
+          uploads: normalizedUploads,
+          files: normalizedUploads,
+        };
+      });
+      setCompanyFileToDelete(null);
+    } catch (error) {
+      setCompanyUploadsError(error.message || "حذف فایل ناموفق بود.");
+    } finally {
+      setIsCompanyFileDeleting(false);
     }
   };
 
@@ -1125,23 +1295,17 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                 ))}
               </div>
             </section>
-          ) : activeSection === "companyFileUpload" && isAdmin ? (
-            <section className="space-y-5">
-              {(companyFileUploadMessage || companyFileUploadError) && (
-                <div
-                  className={`rounded-md px-4 py-3 text-sm font-bold ${
-                    companyFileUploadError
-                      ? "border border-red-200 bg-red-50 text-red-700"
-                      : "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                  }`}
-                >
-                  {companyFileUploadError || companyFileUploadMessage}
-                </div>
-              )}
-
+          ) : false ? (
+            <section className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+              <button
+                type="button"
+                aria-label="بستن پنجره آپلود فایل شرکت"
+                className="absolute inset-0 bg-slate-950/45"
+                onClick={backToCompanyPrices}
+              />
               <form
                 onSubmit={handleCompanyFileUpload}
-                className="rounded-md border border-slate-200 bg-white p-5 shadow-sm"
+                className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md border border-slate-200 bg-white p-5 shadow-2xl"
               >
                 <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -1157,9 +1321,21 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                     onClick={backToCompanyPrices}
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
                   >
-                    بازگشت به لیست شرکت‌ها
+                    بستن
                   </button>
                 </div>
+
+                {(companyFileUploadMessage || companyFileUploadError) && (
+                  <div
+                    className={`mb-4 rounded-md px-4 py-3 text-sm font-bold ${
+                      companyFileUploadError
+                        ? "border border-red-200 bg-red-50 text-red-700"
+                        : "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    {companyFileUploadError || companyFileUploadMessage}
+                  </div>
+                )}
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block">
@@ -1183,20 +1359,29 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                       type="text"
                       value={companyFileCompanyName}
                       onChange={(event) => {
+                        if (companyUploadReturnCompany) return;
                         setCompanyFileCompanyName(event.target.value);
                         setIsCompanyNameDropdownOpen(true);
                       }}
-                      onFocus={() => setIsCompanyNameDropdownOpen(true)}
+                      onFocus={() =>
+                        !companyUploadReturnCompany &&
+                        setIsCompanyNameDropdownOpen(true)
+                      }
                       onBlur={() => {
                         window.setTimeout(
                           () => setIsCompanyNameDropdownOpen(false),
                           120,
                         );
                       }}
+                      readOnly={Boolean(companyUploadReturnCompany)}
                       required
-                      className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                      className={`mt-2 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
+                        companyUploadReturnCompany
+                          ? "bg-slate-100"
+                          : "bg-white"
+                      }`}
                     />
-                    {isCompanyNameDropdownOpen && (
+                    {isCompanyNameDropdownOpen && !companyUploadReturnCompany && (
                       <div className="absolute right-0 top-full z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-xl">
                         {companiesLoading ? (
                           <div className={`px-3 py-3 text-sm ${theme.colors.text.muted}`}>
@@ -1291,17 +1476,27 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                           فایل‌ها و تصاویر آپلود شده برای این شرکت
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedCompany(null);
-                          setCompanyUploads([]);
-                          setCompanyUploadsError("");
-                        }}
-                        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
-                      >
-                        بازگشت به لیست شرکت‌ها
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openCompanyFileUploadPage(selectedCompany)}
+                          className="rounded-md bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400"
+                        >
+                          آپلود فایل
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCompany(null);
+                            setCompanyUploads([]);
+                            setCompanyUploadsError("");
+                            setCompanyUploadReturnCompany(null);
+                          }}
+                          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+                        >
+                          بازگشت به لیست شرکت‌ها
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1351,21 +1546,30 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                                   تاریخ: {uploadDate}
                                 </p>
                               )}
-                              {upload.url ? (
-                                <a
-                                  href={upload.url}
-                                  download={!isImage}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="mt-4 inline-flex min-h-10 items-center rounded-md bg-amber-500 px-4 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400"
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {upload.url ? (
+                                  <a
+                                    href={upload.url}
+                                    download={!isImage}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex min-h-10 items-center rounded-md bg-amber-500 px-4 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400"
+                                  >
+                                    {isImage ? "مشاهده تصویر" : "دانلود فایل"}
+                                  </a>
+                                ) : (
+                                  <p className="text-sm font-bold text-red-600">
+                                    لینک فایل موجود نیست.
+                                  </p>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openDeleteCompanyFilePopup(upload)}
+                                  className="inline-flex min-h-10 items-center rounded-md border border-red-200 px-4 text-sm font-bold text-red-600 transition-colors hover:bg-red-50"
                                 >
-                                  {isImage ? "مشاهده تصویر" : "دانلود فایل"}
-                                </a>
-                              ) : (
-                                <p className="mt-4 text-sm font-bold text-red-600">
-                                  لینک فایل موجود نیست.
-                                </p>
-                              )}
+                                  حذف
+                                </button>
+                              </div>
                             </div>
                           </article>
                         );
@@ -1378,7 +1582,7 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={openCompanyFileUploadPage}
+                      onClick={() => openCompanyFileUploadPage(null)}
                       className="min-h-11 rounded-md bg-amber-500 px-5 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400"
                     >
                       آپلود فایل
@@ -1809,9 +2013,9 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                             className="text-right text-sm font-bold text-slate-700"
                           >
                             {(
+                              inventories[warehouseId]?.items?.length ??
                               warehouse.itemsCount ??
                               warehouse.productsCount ??
-                              inventories[warehouseId]?.items?.length ??
                               0
                             ).toLocaleString("fa-IR")}
                           </button>
@@ -1832,6 +2036,173 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
           )}
         </main>
       </div>
+
+      {isCompanyFileUploadPopupOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            aria-label="بستن پنجره آپلود فایل شرکت"
+            className="absolute inset-0 bg-slate-950/45"
+            onClick={backToCompanyPrices}
+          />
+          <form
+            onSubmit={handleCompanyFileUpload}
+            className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md border border-slate-200 bg-white p-5 shadow-2xl"
+          >
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className={`text-base font-bold ${theme.colors.text.primary}`}>
+                  ساخت فایل جدید شرکت
+                </h3>
+                <p className={`mt-1 text-sm ${theme.colors.text.muted}`}>
+                  همه فیلدها الزامی هستند.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={backToCompanyPrices}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+              >
+                بستن
+              </button>
+            </div>
+
+            {(companyFileUploadMessage || companyFileUploadError) && (
+              <div
+                className={`mb-4 rounded-md px-4 py-3 text-sm font-bold ${
+                  companyFileUploadError
+                    ? "border border-red-200 bg-red-50 text-red-700"
+                    : "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                }`}
+              >
+                {companyFileUploadError || companyFileUploadMessage}
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className={`text-sm font-bold ${theme.colors.text.primary}`}>
+                  عنوان
+                </span>
+                <input
+                  type="text"
+                  value={companyFileTitle}
+                  onChange={(event) => setCompanyFileTitle(event.target.value)}
+                  required
+                  className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                />
+              </label>
+
+              <label className="relative block">
+                <span className={`text-sm font-bold ${theme.colors.text.primary}`}>
+                  نام شرکت
+                </span>
+                <input
+                  type="text"
+                  value={companyFileCompanyName}
+                  onChange={(event) => {
+                    if (companyUploadReturnCompany) return;
+                    setCompanyFileCompanyName(event.target.value);
+                    setIsCompanyNameDropdownOpen(true);
+                  }}
+                  onFocus={() =>
+                    !companyUploadReturnCompany &&
+                    setIsCompanyNameDropdownOpen(true)
+                  }
+                  onBlur={() => {
+                    window.setTimeout(
+                      () => setIsCompanyNameDropdownOpen(false),
+                      120,
+                    );
+                  }}
+                  readOnly={Boolean(companyUploadReturnCompany)}
+                  required
+                  className={`mt-2 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 ${
+                    companyUploadReturnCompany ? "bg-slate-100" : "bg-white"
+                  }`}
+                />
+                {isCompanyNameDropdownOpen && !companyUploadReturnCompany && (
+                  <div className="absolute right-0 top-full z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-xl">
+                    {companiesLoading ? (
+                      <div className={`px-3 py-3 text-sm ${theme.colors.text.muted}`}>
+                        در حال دریافت شرکت‌ها...
+                      </div>
+                    ) : filteredCompanyNameOptions.length > 0 ? (
+                      filteredCompanyNameOptions.map((companyName) => (
+                        <button
+                          key={companyName}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setCompanyFileCompanyName(companyName);
+                            setIsCompanyNameDropdownOpen(false);
+                          }}
+                          className="block w-full px-3 py-2 text-right text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100"
+                        >
+                          {companyName}
+                        </button>
+                      ))
+                    ) : (
+                      <div className={`px-3 py-3 text-sm ${theme.colors.text.muted}`}>
+                        شرکتی برای نمایش وجود ندارد.
+                      </div>
+                    )}
+                  </div>
+                )}
+                {companiesLoading && (
+                  <p className={`mt-2 text-xs ${theme.colors.text.muted}`}>
+                    در حال دریافت شرکت‌ها...
+                  </p>
+                )}
+                {!companiesLoading && companiesError && (
+                  <p className="mt-2 text-xs font-bold text-red-600">
+                    {companiesError}
+                  </p>
+                )}
+              </label>
+
+              <label className="block">
+                <span className={`text-sm font-bold ${theme.colors.text.primary}`}>
+                  افزودن فایل
+                </span>
+                <input
+                  key={companyFileInputKey}
+                  type="file"
+                  onChange={(event) =>
+                    setCompanyFile(event.target.files?.[0] || null)
+                  }
+                  required
+                  className="mt-2 block min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:ml-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
+                />
+              </label>
+
+              <label className="block">
+                <span className={`text-sm font-bold ${theme.colors.text.primary}`}>
+                  تاریخ
+                </span>
+                <input
+                  type="text"
+                  value={companyFileDate}
+                  onChange={(event) => setCompanyFileDate(event.target.value)}
+                  placeholder="مثلاً 1405/05/03"
+                  required
+                  className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="submit"
+                disabled={isCompanyFileUploading}
+                className="min-h-11 rounded-md bg-amber-500 px-6 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCompanyFileUploading ? "در حال ساخت..." : "ساخت"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {isInventoryPopupOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -2058,6 +2429,44 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {companyFileToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            aria-label="بستن پنجره حذف فایل شرکت"
+            className="absolute inset-0 bg-slate-950/45"
+            onClick={closeDeleteCompanyFilePopup}
+          />
+          <div className="relative w-full max-w-md rounded-md border border-slate-200 bg-white p-5 shadow-2xl">
+            <h3 className={`text-base font-bold ${theme.colors.text.primary}`}>
+              حذف فایل
+            </h3>
+            <p className={`mt-3 text-sm leading-7 ${theme.colors.text.muted}`}>
+              آیا از حذف فایل «{companyFileToDelete.upload?.title || "بدون عنوان"}»
+              مطمئن هستید؟
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeDeleteCompanyFilePopup}
+                disabled={isCompanyFileDeleting}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                انصراف
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteCompanyFile}
+                disabled={isCompanyFileDeleting}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCompanyFileDeleting ? "در حال حذف..." : "حذف فایل"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

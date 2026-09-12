@@ -5,6 +5,8 @@ export const Header = ({
   productCount,
   isUsingCache,
   currentUser,
+  onImportXls,
+  isImportingXls = false,
   onDashboard,
   onBack,
   onLogout,
@@ -38,6 +40,11 @@ export const Header = ({
   const handleDashboardClick = () => {
     setIsMenuOpen(false);
     onDashboard?.();
+  };
+
+  const handleImportXlsClick = () => {
+    setIsMenuOpen(false);
+    onImportXls?.();
   };
 
   const handleLogoutClick = () => {
@@ -122,6 +129,16 @@ export const Header = ({
                       className="block w-full px-4 py-3 text-right text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100"
                     >
                       داشبورد مدیریت
+                    </button>
+                  )}
+                  {onImportXls && (
+                    <button
+                      type="button"
+                      onClick={handleImportXlsClick}
+                      disabled={isImportingXls}
+                      className="block w-full px-4 py-3 text-right text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isImportingXls ? "در حال خواندن..." : "وارد کردن XLS"}
                     </button>
                   )}
                   <button

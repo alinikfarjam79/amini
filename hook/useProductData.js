@@ -107,6 +107,18 @@ const useProductData = () => {
         setStatus(STATUS.SUCCESS);
     }, []);
 
+    const updateProductAlias = useCallback((productId, alias) => {
+        setProducts((currentProducts) => {
+            const nextProducts = currentProducts.map((product) =>
+                product._id === productId ? { ...product, alias } : product
+            );
+
+            cacheService.write(CACHE_KEY, nextProducts);
+
+            return nextProducts;
+        });
+    }, []);
+
     return {
         status,
         products,
@@ -114,6 +126,7 @@ const useProductData = () => {
         sync: () => sync({ forceServer: true }),
         STATUS,
         replaceProducts,
+        updateProductAlias,
     };
 }
 
