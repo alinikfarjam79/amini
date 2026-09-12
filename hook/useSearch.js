@@ -36,7 +36,7 @@ export const filterByProductSearch = (
     query,
     getSearchFields = (product) => ({
         title: product["عنوان کالا"] || "",
-        barcode: product["بارکد کالا"] || "",
+        barcode: `${product["بارکد کالا"] || ""} ${product["کد کالا"] || ""}`,
     }),
 ) => {
         const normalizedQuery = normalizePersian(query).trim();
@@ -82,16 +82,23 @@ export const filterByProductSearch = (
         });
 };
 
-const useSearch = (products) => {
+const useSearch = (products, options = {}) => {
     const [query, setQuery] = useState("");
+    const searchTarget = options.searchTarget || "title";
 
     useEffect(() => {
         console.log(products[0]);
     }, [products]);
 
     const filteredProducts = useMemo(() => {
-        return filterByProductSearch(products, query);
-    }, [products, query]);
+        return filterByProductSearch(products, query, (product) => ({
+            title:
+                searchTarget === "alias"
+                    ? product.alias || ""
+                    : product["عنوان کالا"] || "",
+            barcode: `${product["بارکد کالا"] || ""} ${product["کد کالا"] || ""}`,
+        }));
+    }, [products, query, searchTarget]);
 
     return { query, setQuery, filteredProducts };
 };

@@ -135,11 +135,15 @@ export default function App() {
     updateProductAlias,
   } =
     useProductData();
-  const { query, setQuery, filteredProducts } = useSearch(products);
   const { priceChanges, computeChanges, dismissProduct } = usePriceChanges();
   const [barcode, setBarcode] = useState("");
   const [page, setPage] = useState("main"); // "main" | "priceChanges"
   const [currentUser, setCurrentUser] = useState(getStoredUser);
+  const [adminSearchTarget, setAdminSearchTarget] = useState("title");
+  const isAdmin = currentUser?.role === "admin";
+  const { query, setQuery, filteredProducts } = useSearch(products, {
+    searchTarget: isAdmin ? adminSearchTarget : "title",
+  });
   const [importError, setImportError] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const fileInputRef = useRef(null);
@@ -413,6 +417,32 @@ export default function App() {
               </button>
             }
           />
+          {isAdmin && (
+            <div className="flex min-h-10 overflow-hidden rounded-xl border border-slate-300 bg-white text-xs font-bold shadow-sm">
+              <button
+                type="button"
+                onClick={() => setAdminSearchTarget("title")}
+                className={`px-3 transition-colors ${
+                  adminSearchTarget === "title"
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                اسم اصلی
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSearchTarget("alias")}
+                className={`border-r border-slate-200 px-3 transition-colors ${
+                  adminSearchTarget === "alias"
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                اسم مستعار
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Action bar ── */}
