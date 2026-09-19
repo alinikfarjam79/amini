@@ -119,6 +119,27 @@ const useProductData = () => {
         });
     }, []);
 
+    const updateProductThresholdStatus = useCallback((productId, thresholdUpdates) => {
+        setProducts((currentProducts) => {
+            const nextProducts = currentProducts.map((product) =>
+                product._id === productId
+                    ? {
+                        ...product,
+                        ...Object.fromEntries(
+                            Object.entries(thresholdUpdates).filter(
+                                ([, value]) => value !== undefined
+                            )
+                        ),
+                    }
+                    : product
+            );
+
+            cacheService.write(CACHE_KEY, nextProducts);
+
+            return nextProducts;
+        });
+    }, []);
+
     return {
         status,
         products,
@@ -127,6 +148,7 @@ const useProductData = () => {
         STATUS,
         replaceProducts,
         updateProductAlias,
+        updateProductThresholdStatus,
     };
 }
 

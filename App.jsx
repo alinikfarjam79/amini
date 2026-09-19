@@ -1,16 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import {
+  Route,
+  Routes,
+  Navigate,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { Banner } from "./components/Banner";
 import BarcodeScannerModal from "./components/BarcodeScannerModal";
 import DashboardPage from "./components/DashboardPage";
 import { Header } from "./components/Header";
 import LoginPage from "./components/LoginPage";
 import { ProductGrid } from "./components/ProductGrid";
+import ProductDetailsPage from "./components/ProductDetailsPage";
+import InventoryAlertsPage from "./components/InventoryAlertsPage";
 import { SearchBox } from "./components/SearchBox";
 import { SyncButton } from "./components/SyncButton";
 import PriceChangesPage from "./components/PriceChangesPage";
 import { theme } from "./config/theme";
-import { updateProductAlias as patchProductAlias } from "./services/dataService";
+import {
+  updateProductAlias as patchProductAlias,
+  updateProductThresholdStatus as patchProductThresholdStatus,
+} from "./services/dataService";
 import useBarcodeScanner from "./hook/useBarcodeScanner";
 import useProductData from "./hook/useProductData";
 import useSearch from "./hook/useSearch";
@@ -122,6 +134,44 @@ const hasCachedProducts = () => {
   return false;
 };
 
+const getProductRouteId = (product) =>
+  String(
+    product?._id ||
+      product?.id ||
+      product?.["کد کالا"] ||
+      product?.["بارکد کالا"] ||
+      "",
+  );
+
+const ProductDetailsRoute = ({
+  products,
+  inventoryByCode,
+  isAdmin,
+  onBack,
+  onUpdateAlias,
+  onUpdateThresholdStatus,
+}) => {
+  const { productId = "" } = useParams();
+  const product = products.find(
+    (item) => getProductRouteId(item) === productId,
+  );
+  const code = String(product?.["کد کالا"] || "").trim();
+  const inventory = product
+    ? inventoryByCode[code] ?? product.quantity ?? 0
+    : 0;
+
+  return (
+    <ProductDetailsPage
+      product={product}
+      inventory={inventory}
+      isAdmin={isAdmin}
+      onBack={onBack}
+      onUpdateAlias={onUpdateAlias}
+      onUpdateThresholdStatus={onUpdateThresholdStatus}
+    />
+  );
+};
+
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -133,6 +183,7 @@ export default function App() {
     STATUS,
     replaceProducts,
     updateProductAlias,
+    updateProductThresholdStatus,
   } =
     useProductData();
   const { priceChanges, computeChanges, dismissProduct } = usePriceChanges();
@@ -167,8 +218,12 @@ export default function App() {
       e.preventDefault();
       if (isOpenRef.current) {
         closeScannerRef.current();
+      } else if (location.pathname.startsWith("/products/")) {
+        navigate(location.state?.returnTo || "/");
       } else if (location.pathname === "/dashboard") {
         navigate("/");
+      } else if (location.pathname === "/inventory-alerts") {
+        navigate("/dashboard");
       } else if (page === "priceChanges") {
         setPage("main");
       } else {
@@ -307,6 +362,17 @@ export default function App() {
   const handleUpdateProductAlias = async (productId, alias) => {
     const nextAlias = await patchProductAlias(productId, alias);
     updateProductAlias(productId, nextAlias);
+  };
+
+  const handleUpdateProductThresholdStatus = async (
+    productId,
+    thresholdUpdates,
+  ) => {
+    const updatedThresholds = await patchProductThresholdStatus(
+      productId,
+      thresholdUpdates,
+    );
+    updateProductThresholdStatus(productId, updatedThresholds);
   };
 
   const handleLogout = () => {
@@ -500,7 +566,17 @@ export default function App() {
           searchQuery={query}
           inventoryByCode={inventoryByCode}
           isAdmin={currentUser?.role === "admin"}
-          onUpdateProductAlias={handleUpdateProductAlias}
+          displayNameMode={isAdmin ? adminSearchTarget : "title"}
+          onOpenProduct={
+            isAdmin
+              ? (product) => {
+                  const productId = getProductRouteId(product);
+                  if (productId) {
+                    navigate(`/products/${encodeURIComponent(productId)}`);
+                  }
+                }
+              : undefined
+          }
         />
       </main>
 
@@ -531,7 +607,45 @@ export default function App() {
             currentUser={currentUser}
             onBack={() => navigate("/")}
             onLogout={handleLogout}
+            onInventoryAlerts={() => navigate("/inventory-alerts")}
           />
+        }
+      />
+      <Route
+        path="/products/:productId"
+        element={
+          isAdmin ? (
+            <ProductDetailsRoute
+              products={products}
+              inventoryByCode={inventoryByCode}
+              isAdmin={isAdmin}
+              onBack={() => navigate(location.state?.returnTo || "/")}
+              onUpdateAlias={handleUpdateProductAlias}
+              onUpdateThresholdStatus={handleUpdateProductThresholdStatus}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/inventory-alerts"
+        element={
+          isAdmin ? (
+            <InventoryAlertsPage
+              onBack={() => navigate("/dashboard")}
+              onOpenProduct={(product) => {
+                const productId = getProductRouteId(product);
+                if (productId) {
+                  navigate(`/products/${encodeURIComponent(productId)}`, {
+                    state: { returnTo: "/inventory-alerts" },
+                  });
+                }
+              }}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
         }
       />
       <Route path="*" element={mainPage} />

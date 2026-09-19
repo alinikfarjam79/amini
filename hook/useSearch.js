@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { normalizePersian } from "../utilities/function";
 
 // کلمات بسیار کوتاه یا پسوندهایی که به‌تنهایی معنا ندارند و باعث match اشتباه می‌شوند
@@ -85,10 +85,6 @@ export const filterByProductSearch = (
 const useSearch = (products, options = {}) => {
     const [query, setQuery] = useState("");
     const searchTarget = options.searchTarget || "title";
-
-    useEffect(() => {
-        console.log(products[0]);
-    }, [products]);
 
     const filteredProducts = useMemo(() => {
         return filterByProductSearch(products, query, (product) => ({

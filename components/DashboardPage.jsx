@@ -131,6 +131,20 @@ const sortUploadsByNewest = (uploads) =>
 
     return secondTime - firstTime;
   });
+const normalizeDateInputDigits = (value = "") =>
+  String(value)
+    .replace(/[\u06F0-\u06F9]/g, (digit) => digit.charCodeAt(0) - 0x06f0)
+    .replace(/[\u0660-\u0669]/g, (digit) => digit.charCodeAt(0) - 0x0660);
+const getCompanyFileDateDigits = (value = "") =>
+  normalizeDateInputDigits(value).replace(/\D/g, "").slice(0, 8);
+const formatCompanyFileDateInput = (value = "") => {
+  const digits = getCompanyFileDateDigits(value);
+  const year = digits.slice(0, 4).padEnd(4, "_");
+  const month = digits.slice(4, 6).padEnd(2, "_");
+  const day = digits.slice(6, 8).padEnd(2, "_");
+
+  return `${year}/${month}/${day}`;
+};
 const translateProductUploadError = (message = "") => {
   if (message.includes("قیمت اصلی") && message.includes("valid number")) {
     return "قیمت اصلی باید عدد معتبر باشد.";
@@ -143,29 +157,99 @@ const buildProductUploadMessage = (result) => {
   const zeroPriceCount = Array.isArray(result?.zeroPriceProducts)
     ? result.zeroPriceProducts.length
     : 0;
+  const createdInvalidPriceCount = Array.isArray(
+    result?.createdInvalidPriceProducts,
+  )
+    ? result.createdInvalidPriceProducts.length
+    : 0;
+  const skippedInvalidPriceCount = Array.isArray(
+    result?.skippedInvalidPriceProducts,
+  )
+    ? result.skippedInvalidPriceProducts.length
+    : 0;
+  const legacyInvalidPriceCount = Array.isArray(result?.invalidPriceProducts)
+    ? result.invalidPriceProducts.length
+    : 0;
 
-  if (invalidRows > 0 || zeroPriceCount > 0) {
+  if (
+    invalidRows > 0 ||
+    zeroPriceCount > 0 ||
+    createdInvalidPriceCount > 0 ||
+    skippedInvalidPriceCount > 0 ||
+    legacyInvalidPriceCount > 0
+  ) {
     return "فایل آپلود شد، اما بعضی ردیف‌ها نیاز به بررسی دارند.";
   }
 
   return "فایل با موفقیت آپلود شد.";
+};
+const translateInvalidPriceAction = (action = "") => {
+  if (action === "created_with_zero_price") {
+    return "محصول ساخته شد و قیمت آن صفر ثبت شد.";
+  }
+
+  if (action === "skipped_existing_product") {
+    return "محصول قبلی حفظ شد و قیمت نامعتبر اعمال نشد.";
+  }
+
+  return action || "-";
 };
 const translateWarehouseUploadError = (message = "") => {
   if (message.includes("quantity") && message.includes("valid whole number")) {
     return "موجودی باید عدد صحیح معتبر باشد.";
   }
 
+  if (message.includes("quantity") && message.includes("zero or greater")) {
+    return "موجودی باید صفر یا بیشتر باشد.";
+  }
+
   return message || "ردیف معتبر نیست.";
+};
+const translateInvalidQuantityAction = (action = "") => {
+  if (action === "created_with_zero_quantity") {
+    return "محصول ساخته شد و موجودی آن صفر ثبت شد.";
+  }
+
+  if (action === "updated_with_zero_quantity") {
+    return "محصول پیدا شد و موجودی آن صفر ثبت شد.";
+  }
+
+  if (action === "skipped_existing_product") {
+    return "محصول قبلی حفظ شد و موجودی نامعتبر اعمال نشد.";
+  }
+
+  if (action === "skipped_new_product") {
+    return "محصول جدید به خاطر موجودی نامعتبر ساخته نشد.";
+  }
+
+  return action || "-";
 };
 const hasWarehouseUploadIssues = (result) => {
   const invalidRows = Number(result?.invalidRows || 0);
-  const zeroOrNegativeCount = Array.isArray(
+  const zeroOrNegativeQuantityCount = Array.isArray(
     result?.zeroOrNegativeQuantityProducts,
   )
     ? result.zeroOrNegativeQuantityProducts.length
+    : Array.isArray(result?.zeroQuantityProducts)
+      ? result.zeroQuantityProducts.length
+      : 0;
+  const createdInvalidQuantityCount = Array.isArray(
+    result?.createdInvalidQuantityProducts,
+  )
+    ? result.createdInvalidQuantityProducts.length
+    : 0;
+  const skippedInvalidQuantityCount = Array.isArray(
+    result?.skippedInvalidQuantityProducts,
+  )
+    ? result.skippedInvalidQuantityProducts.length
     : 0;
 
-  return invalidRows > 0 || zeroOrNegativeCount > 0;
+  return (
+    invalidRows > 0 ||
+    zeroOrNegativeQuantityCount > 0 ||
+    createdInvalidQuantityCount > 0 ||
+    skippedInvalidQuantityCount > 0
+  );
 };
 const buildWarehouseUploadMessage = (result) => {
   if (hasWarehouseUploadIssues(result)) {
@@ -175,7 +259,12 @@ const buildWarehouseUploadMessage = (result) => {
   return "فایل موجودی انبار با موفقیت آپلود شد.";
 };
 
-export default function DashboardPage({ currentUser, onBack, onLogout }) {
+export default function DashboardPage({
+  currentUser,
+  onBack,
+  onLogout,
+  onInventoryAlerts,
+}) {
   const isAdmin = currentUser?.role === "admin";
   const [activeSection, setActiveSection] = useState("dashboard");
   const [selectedWarehouseDetailsId, setSelectedWarehouseDetailsId] =
@@ -534,9 +623,22 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
       sectionId: "users",
       adminOnly: true,
     },
+    {
+      id: "inventory-alerts",
+      icon: "⚠️",
+      title: "پایش هشدار موجودی",
+      description:
+        "جستجو و مشاهده محصولات بحرانی، هشدار و محصولاتی که آستانه موجودی آن‌ها غیرفعال است.",
+      externalAction: onInventoryAlerts,
+      adminOnly: true,
+    },
   ].filter((action) => !action.adminOnly || isAdmin);
 
   const handleManagementAction = (action) => {
+    if (action.externalAction) {
+      action.externalAction();
+      return;
+    }
     handleSectionChange(action.sectionId);
   };
 
@@ -598,14 +700,57 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
     setCompanyFileInputKey((currentKey) => currentKey + 1);
   };
 
+  const handleCompanyFileDateChange = (event) => {
+    setCompanyFileDate(formatCompanyFileDateInput(event.target.value));
+  };
+
+  const handleCompanyFileDateKeyDown = (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+    const navigationKeys = ["Tab", "ArrowLeft", "ArrowRight", "Home", "End"];
+
+    if (navigationKeys.includes(event.key)) return;
+
+    const currentDigits = getCompanyFileDateDigits(companyFileDate);
+
+    if (event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault();
+      setCompanyFileDate(formatCompanyFileDateInput(currentDigits.slice(0, -1)));
+      return;
+    }
+
+    const normalizedKey = normalizeDateInputDigits(event.key);
+
+    if (/^\d$/.test(normalizedKey)) {
+      event.preventDefault();
+
+      if (currentDigits.length < 8) {
+        setCompanyFileDate(
+          formatCompanyFileDateInput(`${currentDigits}${normalizedKey}`),
+        );
+      }
+
+      return;
+    }
+
+    event.preventDefault();
+  };
+
   const handleCompanyFileUpload = async (event) => {
     event.preventDefault();
 
     const title = companyFileTitle.trim();
     const companyName = companyFileCompanyName.trim();
+    const publishDate = formatCompanyFileDateInput(companyFileDate);
 
-    if (!title || !companyName || !companyFileDate || !companyFile) {
+    if (!title || !companyName || !getCompanyFileDateDigits(publishDate) || !companyFile) {
       setCompanyFileUploadError("همه فیلدها باید تکمیل شوند.");
+      setCompanyFileUploadMessage("");
+      return;
+    }
+
+    if (getCompanyFileDateDigits(publishDate).length !== 8) {
+      setCompanyFileUploadError("تاریخ باید کامل و به صورت سال/ماه/روز وارد شود.");
       setCompanyFileUploadMessage("");
       return;
     }
@@ -618,7 +763,7 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
       await uploadCompanyFile({
         companyName,
         title,
-        publishDate: companyFileDate,
+        publishDate,
         file: companyFile,
       });
       const refreshedCompanies = await searchCompanies(companyName);
@@ -972,6 +1117,83 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
   }) => {
     const state = uploadState[type];
     const inputId = `${type}-excel-file`;
+    const legacyInvalidPriceProducts = Array.isArray(
+      state.details?.invalidPriceProducts,
+    )
+      ? state.details.invalidPriceProducts
+      : [];
+    const skippedInvalidPriceProducts = Array.isArray(
+      state.details?.skippedInvalidPriceProducts,
+    )
+      ? state.details.skippedInvalidPriceProducts
+      : legacyInvalidPriceProducts.filter(
+          (product) => product.action === "skipped_existing_product",
+        );
+    const createdInvalidPriceProducts = Array.isArray(
+      state.details?.createdInvalidPriceProducts,
+    )
+      ? state.details.createdInvalidPriceProducts
+      : legacyInvalidPriceProducts.filter(
+          (product) => product.action === "created_with_zero_price",
+        );
+    const otherInvalidPriceProducts = legacyInvalidPriceProducts.filter(
+      (product) =>
+        product.action !== "skipped_existing_product" &&
+        product.action !== "created_with_zero_price",
+    );
+    const rowSummary = state.details?.rowSummary || {};
+    const productSummary =
+      Object.keys(rowSummary).length > 0 ? rowSummary : state.details || {};
+    const renderInvalidPriceTable = (tableTitle, products) => {
+      if (products.length === 0) return null;
+
+      return (
+        <div>
+          <h4 className="mb-2 font-bold text-orange-700">{tableTitle}</h4>
+          <div className="overflow-x-auto rounded-md border border-orange-200 bg-white">
+            <div className="min-w-[900px] divide-y divide-orange-100">
+              <div className="grid grid-cols-[80px_1fr_140px_110px_1.2fr_1.5fr] gap-3 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
+                <span>ردیف</span>
+                <span>عنوان</span>
+                <span>کد محصول</span>
+                <span>قیمت ثبت‌شده</span>
+                <span>علت</span>
+                <span>نتیجه عملیات</span>
+              </div>
+              {products.map((product, index) => (
+                <div
+                  key={`${product.productCode || product.row}-${index}`}
+                  className="grid grid-cols-[80px_1fr_140px_110px_1.2fr_1.5fr] gap-3 px-3 py-2"
+                >
+                  <span>
+                    {product.row?.toLocaleString?.("fa-IR") || product.row}
+                  </span>
+                  <span className="font-bold">{product.title || "-"}</span>
+                  <span className="font-mono">{product.productCode || "-"}</span>
+                  <span className="font-bold text-orange-700">
+                    {Number(product.originalPrice || 0).toLocaleString("fa-IR")}
+                  </span>
+                  <span className="text-orange-700">
+                    {translateProductUploadError(product.reason)}
+                  </span>
+                  <span className="font-bold text-slate-700">
+                    {translateInvalidPriceAction(product.action)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+    const renderSummaryItem = (label, value, className = "") => (
+      <div>
+        <span className="block text-xs text-slate-500">{label}</span>
+        <span className={`font-bold ${className}`}>
+          {Number(value || 0).toLocaleString("fa-IR")}
+        </span>
+      </div>
+    );
 
     return (
       <form
@@ -1032,55 +1254,97 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
 
         {type === "products" && state.details && !state.error && (
           <div className="mt-4 space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-              <div>
-                <span className="block text-xs text-slate-500">کل ردیف‌ها</span>
-                <span className="font-bold">
-                  {Number(state.details.totalRows || 0).toLocaleString("fa-IR")}
-                </span>
-              </div>
-              <div>
-                <span className="block text-xs text-slate-500">ردیف معتبر</span>
-                <span className="font-bold text-emerald-700">
-                  {Number(state.details.validRows || 0).toLocaleString("fa-IR")}
-                </span>
-              </div>
-              <div>
-                <span className="block text-xs text-slate-500">ردیف خراب</span>
-                <span className="font-bold text-red-700">
-                  {Number(state.details.invalidRows || 0).toLocaleString("fa-IR")}
-                </span>
-              </div>
-              <div>
-                <span className="block text-xs text-slate-500">اضافه‌شده</span>
-                <span className="font-bold">
-                  {Number(state.details.inserted || 0).toLocaleString("fa-IR")}
-                </span>
-              </div>
-              <div>
-                <span className="block text-xs text-slate-500">آپدیت‌شده</span>
-                <span className="font-bold">
-                  {Number(state.details.updated || 0).toLocaleString("fa-IR")}
-                </span>
+            <div className="rounded-md border border-slate-200 bg-white p-3">
+              <h4 className="mb-3 font-bold text-slate-800">اطلاعات کلی</h4>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {renderSummaryItem(
+                  "کل ردیف‌ها",
+                  productSummary.totalRows,
+                )}
+                {renderSummaryItem(
+                  "ردیف معتبر",
+                  productSummary.validRows,
+                  "text-emerald-700",
+                )}
+                {renderSummaryItem(
+                  "ردیف نامعتبر",
+                  productSummary.invalidRows,
+                  "text-red-700",
+                )}
+                {renderSummaryItem(
+                  "ردیف قیمت صفر",
+                  productSummary.zeroPriceRows ??
+                    state.details.zeroPriceProducts?.length,
+                  "text-amber-700",
+                )}
+                {renderSummaryItem(
+                  "محصول جدید",
+                  productSummary.newProducts ?? state.details.inserted,
+                )}
+                {renderSummaryItem(
+                  "محصول آپدیت‌شده",
+                  productSummary.updatedProducts ?? state.details.updated,
+                )}
+                {renderSummaryItem(
+                  "قیمت نامعتبر و ذخیره‌شده با صفر",
+                  productSummary.createdInvalidPriceRows ??
+                    createdInvalidPriceProducts.length,
+                  "text-orange-700",
+                )}
+                {renderSummaryItem(
+                  "قیمت نامعتبر و آپدیت‌نشده",
+                  productSummary.skippedInvalidPriceRows ??
+                    skippedInvalidPriceProducts.length,
+                  "text-red-700",
+                )}
+                {renderSummaryItem(
+                  "ردیف خطادار",
+                  productSummary.errorRows ?? state.details.errors?.length,
+                  "text-red-700",
+                )}
               </div>
             </div>
+
+            {renderInvalidPriceTable(
+              "محصولاتی که قیمت نامعتبر داشتند و با صفر ذخیره شدند",
+              createdInvalidPriceProducts,
+            )}
+
+            {renderInvalidPriceTable(
+              "محصولاتی که قیمت نامعتبر داشتند و آپدیت نشدند",
+              skippedInvalidPriceProducts,
+            )}
+
+            {renderInvalidPriceTable(
+              "سایر محصولات با قیمت نامعتبر",
+              otherInvalidPriceProducts,
+            )}
 
             {Array.isArray(state.details.zeroPriceProducts) &&
               state.details.zeroPriceProducts.length > 0 && (
                 <div>
                   <h4 className="mb-2 font-bold text-amber-700">
-                    محصولات با قیمت صفر
+                    محصولات با قیمت صفر یا منفی که با صفر ذخیره شدند
                   </h4>
                   <div className="overflow-x-auto rounded-md border border-amber-200 bg-white">
-                    <div className="min-w-[560px] divide-y divide-amber-100">
+                    <div className="min-w-[680px] divide-y divide-amber-100">
+                      <div className="grid grid-cols-[80px_1fr_140px_120px] gap-3 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                        <span>ردیف</span>
+                        <span>عنوان</span>
+                        <span>کد محصول</span>
+                        <span>قیمت ثبت‌شده</span>
+                      </div>
                       {state.details.zeroPriceProducts.map((product, index) => (
                         <div
                           key={`${product.productCode || product.row}-${index}`}
-                          className="grid grid-cols-[80px_1fr_140px] gap-3 px-3 py-2"
+                          className="grid grid-cols-[80px_1fr_140px_120px] gap-3 px-3 py-2"
                         >
-                          <span>ردیف {product.row?.toLocaleString?.("fa-IR") || product.row}</span>
+                          <span>{product.row?.toLocaleString?.("fa-IR") || product.row}</span>
                           <span className="font-bold">{product.title || "-"}</span>
                           <span className="font-mono">{product.productCode || "-"}</span>
+                          <span className="font-bold text-amber-700">
+                            {Number(product.originalPrice || 0).toLocaleString("fa-IR")}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -1442,11 +1706,15 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                     </span>
                     <input
                       type="text"
-                      value={companyFileDate}
-                      onChange={(event) => setCompanyFileDate(event.target.value)}
-                      placeholder="مثلاً 1405/05/03"
+                      value={formatCompanyFileDateInput(companyFileDate)}
+                      onChange={handleCompanyFileDateChange}
+                      onKeyDown={handleCompanyFileDateKeyDown}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={10}
                       required
-                      className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                      dir="ltr"
+                      className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-center font-mono text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                     />
                   </label>
                 </div>
@@ -2182,11 +2450,15 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
                 </span>
                 <input
                   type="text"
-                  value={companyFileDate}
-                  onChange={(event) => setCompanyFileDate(event.target.value)}
-                  placeholder="مثلاً 1405/05/03"
+                  value={formatCompanyFileDateInput(companyFileDate)}
+                  onChange={handleCompanyFileDateChange}
+                  onKeyDown={handleCompanyFileDateKeyDown}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={10}
                   required
-                  className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                  dir="ltr"
+                  className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-center font-mono text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                 />
               </label>
             </div>
@@ -2285,137 +2557,253 @@ export default function DashboardPage({ currentUser, onBack, onLogout }) {
               </div>
             </div>
 
-            {inventoryUploadDetails && (
-              <div className="mt-5 space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <div>
-                    <span className="block text-xs text-slate-500">
-                      کل ردیف‌ها
-                    </span>
-                    <span className="font-bold">
-                      {Number(
-                        inventoryUploadDetails.totalRows || 0,
-                      ).toLocaleString("fa-IR")}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-xs text-slate-500">
-                      ردیف معتبر
-                    </span>
-                    <span className="font-bold text-emerald-700">
-                      {Number(
-                        inventoryUploadDetails.validRows || 0,
-                      ).toLocaleString("fa-IR")}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-xs text-slate-500">
-                      ردیف خراب
-                    </span>
-                    <span className="font-bold text-red-700">
-                      {Number(
-                        inventoryUploadDetails.invalidRows || 0,
-                      ).toLocaleString("fa-IR")}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-xs text-slate-500">
-                      پیدا شده
-                    </span>
-                    <span className="font-bold">
-                      {Number(
-                        inventoryUploadDetails.matched || 0,
-                      ).toLocaleString("fa-IR")}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-xs text-slate-500">
-                      پیدا نشده
-                    </span>
-                    <span className="font-bold">
-                      {Number(
-                        inventoryUploadDetails.unmatched || 0,
-                      ).toLocaleString("fa-IR")}
-                    </span>
-                  </div>
-                </div>
-
-                {Array.isArray(
+            {inventoryUploadDetails &&
+              (() => {
+                const createdInvalidQuantityProducts = Array.isArray(
+                  inventoryUploadDetails.createdInvalidQuantityProducts,
+                )
+                  ? inventoryUploadDetails.createdInvalidQuantityProducts
+                  : [];
+                const skippedInvalidQuantityProducts = Array.isArray(
+                  inventoryUploadDetails.skippedInvalidQuantityProducts,
+                )
+                  ? inventoryUploadDetails.skippedInvalidQuantityProducts
+                  : [];
+                const zeroOrNegativeQuantityProducts = Array.isArray(
                   inventoryUploadDetails.zeroOrNegativeQuantityProducts,
-                ) &&
-                  inventoryUploadDetails.zeroOrNegativeQuantityProducts.length >
-                    0 && (
-                    <div>
-                      <h4 className="mb-2 font-bold text-amber-700">
-                        محصولات با موجودی صفر یا منفی
-                      </h4>
-                      <div className="overflow-x-auto rounded-md border border-amber-200 bg-white">
-                        <div className="min-w-[640px] divide-y divide-amber-100">
-                          {inventoryUploadDetails.zeroOrNegativeQuantityProducts.map(
-                            (product, index) => (
-                              <div
-                                key={`${product.productCode || product.row}-${index}`}
-                                className="grid grid-cols-[80px_1fr_140px_100px] gap-3 px-3 py-2"
-                              >
-                                <span>
-                                  ردیف{" "}
-                                  {product.row?.toLocaleString?.("fa-IR") ||
-                                    product.row}
-                                </span>
-                                <span className="font-bold">
-                                  {product.title || "-"}
-                                </span>
-                                <span className="font-mono">
-                                  {product.productCode || "-"}
-                                </span>
-                                <span className="font-bold text-amber-700">
-                                  {Number(product.quantity || 0).toLocaleString(
-                                    "fa-IR",
-                                  )}
-                                </span>
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                )
+                  ? inventoryUploadDetails.zeroOrNegativeQuantityProducts
+                  : Array.isArray(inventoryUploadDetails.zeroQuantityProducts)
+                    ? inventoryUploadDetails.zeroQuantityProducts
+                    : [];
+                const renderInventorySummaryItem = (
+                  label,
+                  value,
+                  className = "",
+                ) => (
+                  <div>
+                    <span className="block text-xs text-slate-500">{label}</span>
+                    <span className={`font-bold ${className}`}>
+                      {Number(value || 0).toLocaleString("fa-IR")}
+                    </span>
+                  </div>
+                );
+                const renderInvalidQuantityTable = (tableTitle, products) => {
+                  if (products.length === 0) return null;
 
-                {Array.isArray(inventoryUploadDetails.errors) &&
-                  inventoryUploadDetails.errors.length > 0 && (
+                  return (
                     <div>
-                      <h4 className="mb-2 font-bold text-red-700">
-                        ردیف‌های خراب
+                      <h4 className="mb-2 font-bold text-orange-700">
+                        {tableTitle}
                       </h4>
-                      <div className="overflow-x-auto rounded-md border border-red-200 bg-white">
-                        <div className="min-w-[720px] divide-y divide-red-100">
-                          {inventoryUploadDetails.errors.map((rowError, index) => (
+                      <div className="overflow-x-auto rounded-md border border-orange-200 bg-white">
+                        <div className="min-w-[900px] divide-y divide-orange-100">
+                          <div className="grid grid-cols-[80px_1fr_140px_110px_110px_1.2fr_1.5fr] gap-3 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
+                            <span>ردیف</span>
+                            <span>عنوان</span>
+                            <span>کد محصول</span>
+                            <span>موجودی اولیه</span>
+                            <span>موجودی ثبت‌شده</span>
+                            <span>علت</span>
+                            <span>نتیجه عملیات</span>
+                          </div>
+                          {products.map((product, index) => (
                             <div
-                              key={`${rowError.productCode || rowError.row}-${index}`}
-                              className="grid grid-cols-[80px_1fr_140px_1.2fr] gap-3 px-3 py-2"
+                              key={`${product.productCode || product.row}-${index}`}
+                              className="grid grid-cols-[80px_1fr_140px_110px_110px_1.2fr_1.5fr] gap-3 px-3 py-2"
                             >
                               <span>
-                                ردیف{" "}
-                                {rowError.row?.toLocaleString?.("fa-IR") ||
-                                  rowError.row}
+                                {product.row?.toLocaleString?.("fa-IR") ||
+                                  product.row}
                               </span>
                               <span className="font-bold">
-                                {rowError.title || "-"}
+                                {product.title || "-"}
                               </span>
                               <span className="font-mono">
-                                {rowError.productCode || "-"}
+                                {product.productCode || "-"}
                               </span>
-                              <span className="text-red-700">
-                                {translateWarehouseUploadError(rowError.message)}
+                              <span className="font-bold text-red-700">
+                                {product.originalQuantity === undefined ||
+                                product.originalQuantity === null
+                                  ? "-"
+                                  : Number.isFinite(
+                                        Number(product.originalQuantity),
+                                      )
+                                    ? Number(
+                                        product.originalQuantity,
+                                      ).toLocaleString("fa-IR")
+                                    : String(product.originalQuantity)}
+                              </span>
+                              <span className="font-bold text-orange-700">
+                                {Number(product.quantity || 0).toLocaleString(
+                                  "fa-IR",
+                                )}
+                              </span>
+                              <span className="text-orange-700">
+                                {translateWarehouseUploadError(
+                                  product.reason || product.message,
+                                )}
+                              </span>
+                              <span className="font-bold text-slate-700">
+                                {translateInvalidQuantityAction(product.action)}
                               </span>
                             </div>
                           ))}
                         </div>
                       </div>
                     </div>
-                  )}
-              </div>
-            )}
+                  );
+                };
+
+                return (
+                  <div className="mt-5 space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <div className="rounded-md border border-slate-200 bg-white p-3">
+                      <h4 className="mb-3 font-bold text-slate-800">
+                        اطلاعات کلی
+                      </h4>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {renderInventorySummaryItem(
+                          "کل ردیف‌ها",
+                          inventoryUploadDetails.totalRows,
+                        )}
+                        {renderInventorySummaryItem(
+                          "ردیف معتبر",
+                          inventoryUploadDetails.validRows,
+                          "text-emerald-700",
+                        )}
+                        {renderInventorySummaryItem(
+                          "ردیف نامعتبر",
+                          inventoryUploadDetails.invalidRows,
+                          "text-red-700",
+                        )}
+                        {renderInventorySummaryItem(
+                          "ردیف موجودی صفر یا منفی",
+                          inventoryUploadDetails.zeroOrNegativeQuantityRows ??
+                            inventoryUploadDetails.zeroQuantityRows ??
+                            zeroOrNegativeQuantityProducts.length,
+                          "text-amber-700",
+                        )}
+                        {renderInventorySummaryItem(
+                          "محصول جدید",
+                          inventoryUploadDetails.newProducts,
+                        )}
+                        {renderInventorySummaryItem(
+                          "محصول آپدیت‌شده",
+                          inventoryUploadDetails.updatedProducts ??
+                            inventoryUploadDetails.productsUpdated,
+                        )}
+                        {renderInventorySummaryItem(
+                          "موجودی نامعتبر و ذخیره‌شده با صفر",
+                          inventoryUploadDetails.createdInvalidQuantityRows ??
+                            createdInvalidQuantityProducts.length,
+                          "text-orange-700",
+                        )}
+                        {renderInventorySummaryItem(
+                          "موجودی نامعتبر و آپدیت‌نشده",
+                          inventoryUploadDetails.skippedInvalidQuantityRows ??
+                            skippedInvalidQuantityProducts.length,
+                          "text-red-700",
+                        )}
+                        {renderInventorySummaryItem(
+                          "ردیف خطادار",
+                          inventoryUploadDetails.errorRows ??
+                            inventoryUploadDetails.errors?.length,
+                          "text-red-700",
+                        )}
+                      </div>
+                    </div>
+
+                    {renderInvalidQuantityTable(
+                      "محصولاتی که موجودی نامعتبر داشتند و با صفر ذخیره شدند",
+                      createdInvalidQuantityProducts,
+                    )}
+
+                    {renderInvalidQuantityTable(
+                      "محصولاتی که موجودی نامعتبر داشتند و آپدیت نشدند",
+                      skippedInvalidQuantityProducts,
+                    )}
+
+                    {zeroOrNegativeQuantityProducts.length > 0 && (
+                      <div>
+                        <h4 className="mb-2 font-bold text-amber-700">
+                          محصولات با موجودی صفر یا منفی
+                        </h4>
+                        <div className="overflow-x-auto rounded-md border border-amber-200 bg-white">
+                          <div className="min-w-[680px] divide-y divide-amber-100">
+                            <div className="grid grid-cols-[80px_1fr_140px_120px] gap-3 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                              <span>ردیف</span>
+                              <span>عنوان</span>
+                              <span>کد محصول</span>
+                              <span>موجودی ثبت‌شده</span>
+                            </div>
+                            {zeroOrNegativeQuantityProducts.map(
+                              (product, index) => (
+                                <div
+                                  key={`${product.productCode || product.row}-${index}`}
+                                  className="grid grid-cols-[80px_1fr_140px_120px] gap-3 px-3 py-2"
+                                >
+                                  <span>
+                                    {product.row?.toLocaleString?.("fa-IR") ||
+                                      product.row}
+                                  </span>
+                                  <span className="font-bold">
+                                    {product.title || "-"}
+                                  </span>
+                                  <span className="font-mono">
+                                    {product.productCode || "-"}
+                                  </span>
+                                  <span className="font-bold text-amber-700">
+                                    {Number(
+                                      product.quantity || 0,
+                                    ).toLocaleString("fa-IR")}
+                                  </span>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {Array.isArray(inventoryUploadDetails.errors) &&
+                      inventoryUploadDetails.errors.length > 0 && (
+                        <div>
+                          <h4 className="mb-2 font-bold text-red-700">
+                            ردیف‌های خراب
+                          </h4>
+                          <div className="overflow-x-auto rounded-md border border-red-200 bg-white">
+                            <div className="min-w-[720px] divide-y divide-red-100">
+                              {inventoryUploadDetails.errors.map(
+                                (rowError, index) => (
+                                  <div
+                                    key={`${rowError.productCode || rowError.row}-${index}`}
+                                    className="grid grid-cols-[80px_1fr_140px_1.2fr] gap-3 px-3 py-2"
+                                  >
+                                    <span>
+                                      {rowError.row?.toLocaleString?.("fa-IR") ||
+                                        rowError.row}
+                                    </span>
+                                    <span className="font-bold">
+                                      {rowError.title || "-"}
+                                    </span>
+                                    <span className="font-mono">
+                                      {rowError.productCode || "-"}
+                                    </span>
+                                    <span className="text-red-700">
+                                      {translateWarehouseUploadError(
+                                        rowError.message,
+                                      )}
+                                    </span>
+                                  </div>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                  </div>
+                );
+              })()}
 
             <div className="mt-6 flex justify-end">
               <button
