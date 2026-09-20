@@ -223,7 +223,7 @@ export default function App() {
       } else if (location.pathname === "/dashboard") {
         navigate("/");
       } else if (location.pathname === "/inventory-alerts") {
-        navigate("/dashboard");
+        navigate("/");
       } else if (page === "priceChanges") {
         setPage("main");
       } else {
@@ -420,6 +420,9 @@ export default function App() {
         onImportXls={() => fileInputRef.current?.click()}
         isImportingXls={importLoading}
         onDashboard={() => navigate("/dashboard")}
+        onInventoryAlerts={
+          isAdmin ? () => navigate("/inventory-alerts") : undefined
+        }
         onLogout={handleLogout}
       />
 
@@ -607,7 +610,6 @@ export default function App() {
             currentUser={currentUser}
             onBack={() => navigate("/")}
             onLogout={handleLogout}
-            onInventoryAlerts={() => navigate("/inventory-alerts")}
           />
         }
       />
@@ -633,7 +635,7 @@ export default function App() {
         element={
           isAdmin ? (
             <InventoryAlertsPage
-              onBack={() => navigate("/dashboard")}
+              onBack={() => navigate("/")}
               onOpenProduct={(product) => {
                 const productId = getProductRouteId(product);
                 if (productId) {

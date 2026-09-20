@@ -15,6 +15,7 @@ const ProductCard = ({
   isAdmin = false,
   displayNameMode = "title",
   onOpen,
+  variant = "default",
 }) => {
   const inventoryNumber = Number(inventory || 0);
   const inventoryBadgeClass =
@@ -55,28 +56,49 @@ const ProductCard = ({
       <h3 className={`text-base font-semibold leading-snug ${theme.colors.text.primary}`}>
         {displayTitle}
       </h3>
-      <div className="flex items-center justify-between gap-2">
-        <span className={`flex max-w-[170px] items-center gap-1 truncate rounded-md px-2 py-1 font-mono text-xs ${theme.colors.badge.barcode}`}>
-          <span className={`text-[10px] ${theme.colors.text.muted}`}>|||</span>
-          {barcode}
-        </span>
-      </div>
+      {variant !== "inventory-alert" && (
+        <div className="flex items-center justify-between gap-2">
+          <span className={`flex max-w-[170px] items-center gap-1 truncate rounded-md px-2 py-1 font-mono text-xs ${theme.colors.badge.barcode}`}>
+            <span className={`text-[10px] ${theme.colors.text.muted}`}>|||</span>
+            {barcode}
+          </span>
+        </div>
+      )}
       <div className="border-t border-slate-200/40" />
-      <div className="mt-auto flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className={`text-xs font-medium ${theme.colors.text.secondary}`}>قیمت مصرف کننده:</span>
-          <span className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-sm font-bold ${theme.colors.badge.price}`}>
-            {formatPrice(price)}
-            <span className="text-xs font-normal opacity-80">تومان</span>
-          </span>
+      {variant === "inventory-alert" ? (
+        <div className="mt-auto grid grid-cols-[1fr_auto_1fr] items-stretch gap-4">
+          <div className="flex min-w-0 flex-col items-start justify-center gap-2">
+            <span className={`text-xs font-medium ${theme.colors.text.secondary}`}>قیمت</span>
+            <span className="inline-flex max-w-full items-center gap-1 text-sm font-bold text-slate-800">
+              {formatPrice(price)}
+              <span className="text-xs font-normal opacity-80">تومان</span>
+            </span>
+          </div>
+          <div className="w-px bg-slate-300" aria-hidden="true" />
+          <div className="flex min-w-0 flex-col items-end justify-center gap-2">
+            <span className={`text-xs font-medium ${theme.colors.text.secondary}`}>موجودی</span>
+            <span className={`inline-flex items-center rounded-lg border px-3 py-1 text-sm font-bold ${inventoryBadgeClass}`}>
+              {formatInventory(inventory)}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center justify-between">
-          <span className={`text-xs font-medium ${theme.colors.text.secondary}`}>موجودی:</span>
-          <span className={`inline-flex items-center rounded-lg border px-3 py-1 text-sm font-bold ${inventoryBadgeClass}`}>
-            {formatInventory(inventory)}
-          </span>
+      ) : (
+        <div className="mt-auto flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className={`text-xs font-medium ${theme.colors.text.secondary}`}>قیمت مصرف کننده:</span>
+            <span className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-sm font-bold ${theme.colors.badge.price}`}>
+              {formatPrice(price)}
+              <span className="text-xs font-normal opacity-80">تومان</span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className={`text-xs font-medium ${theme.colors.text.secondary}`}>موجودی:</span>
+            <span className={`inline-flex items-center rounded-lg border px-3 py-1 text-sm font-bold ${inventoryBadgeClass}`}>
+              {formatInventory(inventory)}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
     </article>
   );
 };

@@ -8,6 +8,7 @@ export const Header = ({
   onImportXls,
   isImportingXls = false,
   onDashboard,
+  onInventoryAlerts,
   onBack,
   onLogout,
 }) => {
@@ -45,6 +46,11 @@ export const Header = ({
   const handleImportXlsClick = () => {
     setIsMenuOpen(false);
     onImportXls?.();
+  };
+
+  const handleInventoryAlertsClick = () => {
+    setIsMenuOpen(false);
+    onInventoryAlerts?.();
   };
 
   const handleLogoutClick = () => {
@@ -129,6 +135,15 @@ export const Header = ({
                       className="block w-full px-4 py-3 text-right text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100"
                     >
                       داشبورد مدیریت
+                    </button>
+                  )}
+                  {onInventoryAlerts && currentUser?.role === "admin" && (
+                    <button
+                      type="button"
+                      onClick={handleInventoryAlertsClick}
+                      className="block w-full px-4 py-3 text-right text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100"
+                    >
+                      پایش هشدار موجودی
                     </button>
                   )}
                   {onImportXls && (

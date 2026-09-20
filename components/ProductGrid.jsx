@@ -59,6 +59,7 @@ export const ProductGrid = ({
   isAdmin = false,
   displayNameMode = "title",
   onOpenProduct,
+  cardVariant = "default",
 }) => {
   const { visibleProducts, hasMore, sentinelRef, total } =
     useInfiniteScroll(products);
@@ -101,6 +102,7 @@ export const ProductGrid = ({
               isAdmin={isAdmin}
               displayNameMode={displayNameMode}
               onOpen={() => onOpenProduct?.(product)}
+              variant={cardVariant}
             />
           ))
         )}

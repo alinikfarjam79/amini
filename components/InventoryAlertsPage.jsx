@@ -67,7 +67,7 @@ export default function InventoryAlertsPage({ onBack, onOpenProduct }) {
           </div>
           <button type="button" onClick={onBack} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50">
             <span aria-hidden="true">→</span>
-            داشبورد مدیریت
+            صفحه اصلی
           </button>
         </div>
       </header>
@@ -104,7 +104,7 @@ export default function InventoryAlertsPage({ onBack, onOpenProduct }) {
           </p>
         )}
 
-        <ProductGrid products={filteredProducts} isLoading={isLoading} searchQuery={query} isAdmin displayNameMode={searchTarget} onOpenProduct={onOpenProduct} />
+        <ProductGrid products={filteredProducts} isLoading={isLoading} searchQuery={query} isAdmin displayNameMode={searchTarget} onOpenProduct={onOpenProduct} cardVariant="inventory-alert" />
       </main>
     </div>
   );

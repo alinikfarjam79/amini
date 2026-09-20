@@ -10,6 +10,7 @@ import {
   deleteCompanyFile,
   normalizeCompanyUploads,
   searchCompanies,
+  updateCompanyFileTitle,
   uploadCompanyFile,
 } from "../services/companyService";
 import { createUser, deleteUser, getUsers } from "../services/userService";
@@ -263,7 +264,6 @@ export default function DashboardPage({
   currentUser,
   onBack,
   onLogout,
-  onInventoryAlerts,
 }) {
   const isAdmin = currentUser?.role === "admin";
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -311,6 +311,10 @@ export default function DashboardPage({
   const [companyUploadsError, setCompanyUploadsError] = useState("");
   const [companyFileToDelete, setCompanyFileToDelete] = useState(null);
   const [isCompanyFileDeleting, setIsCompanyFileDeleting] = useState(false);
+  const [companyFileToEdit, setCompanyFileToEdit] = useState(null);
+  const [companyFileEditTitle, setCompanyFileEditTitle] = useState("");
+  const [companyFileEditError, setCompanyFileEditError] = useState("");
+  const [isCompanyFileTitleSaving, setIsCompanyFileTitleSaving] = useState(false);
   const [companyFileTitle, setCompanyFileTitle] = useState("");
   const [companyFileCompanyName, setCompanyFileCompanyName] = useState("");
   const [companyFileDate, setCompanyFileDate] = useState("");
@@ -623,22 +627,9 @@ export default function DashboardPage({
       sectionId: "users",
       adminOnly: true,
     },
-    {
-      id: "inventory-alerts",
-      icon: "⚠️",
-      title: "پایش هشدار موجودی",
-      description:
-        "جستجو و مشاهده محصولات بحرانی، هشدار و محصولاتی که آستانه موجودی آن‌ها غیرفعال است.",
-      externalAction: onInventoryAlerts,
-      adminOnly: true,
-    },
   ].filter((action) => !action.adminOnly || isAdmin);
 
   const handleManagementAction = (action) => {
-    if (action.externalAction) {
-      action.externalAction();
-      return;
-    }
     handleSectionChange(action.sectionId);
   };
 
@@ -864,6 +855,71 @@ export default function DashboardPage({
       setCompanyUploadsError(error.message || "حذف فایل ناموفق بود.");
     } finally {
       setIsCompanyFileDeleting(false);
+    }
+  };
+
+  const openEditCompanyFileTitlePopup = (upload) => {
+    const companyId = getCompanyId(selectedCompany);
+    const fileId = upload?.id || upload?._id;
+
+    if (!companyId || !fileId) {
+      setCompanyUploadsError("شناسه شرکت یا فایل برای ویرایش پیدا نشد.");
+      return;
+    }
+
+    setCompanyFileEditTitle(upload.title || "");
+    setCompanyFileEditError("");
+    setCompanyFileToEdit({ companyId, fileId, upload });
+  };
+
+  const closeEditCompanyFileTitlePopup = () => {
+    if (isCompanyFileTitleSaving) return;
+    setCompanyFileToEdit(null);
+    setCompanyFileEditError("");
+  };
+
+  const handleEditCompanyFileTitle = async (event) => {
+    event.preventDefault();
+    const title = companyFileEditTitle.trim();
+
+    if (!companyFileToEdit || !title) {
+      setCompanyFileEditError("عنوان فایل را وارد کنید.");
+      return;
+    }
+
+    setIsCompanyFileTitleSaving(true);
+    setCompanyFileEditError("");
+    try {
+      const nextTitle = await updateCompanyFileTitle(
+        companyFileToEdit.companyId,
+        companyFileToEdit.fileId,
+        title,
+      );
+      const updateUploads = (uploads) =>
+        normalizeCompanyUploads(uploads).map((upload) =>
+          (upload.id || upload._id) === companyFileToEdit.fileId
+            ? { ...upload, title: nextTitle }
+            : upload,
+        );
+
+      setCompanyUploads((currentUploads) => updateUploads(currentUploads));
+      setCompanies((currentCompanies) =>
+        currentCompanies.map((company) => {
+          if (getCompanyId(company) !== companyFileToEdit.companyId) return company;
+          const uploads = updateUploads(company);
+          return { ...company, uploads, files: uploads };
+        }),
+      );
+      setSelectedCompany((currentCompany) => {
+        if (!currentCompany) return currentCompany;
+        const uploads = updateUploads(currentCompany);
+        return { ...currentCompany, uploads, files: uploads };
+      });
+      setCompanyFileToEdit(null);
+    } catch (error) {
+      setCompanyFileEditError(error.message || "ویرایش عنوان فایل ناموفق بود.");
+    } finally {
+      setIsCompanyFileTitleSaving(false);
     }
   };
 
@@ -1801,9 +1857,23 @@ export default function DashboardPage({
                             )}
 
                             <div className="p-4">
-                              <h4 className="line-clamp-2 text-sm font-bold text-slate-800">
-                                {upload.title}
-                              </h4>
+                              <div className="flex items-start justify-between gap-2">
+                                <h4 className="line-clamp-2 min-w-0 flex-1 text-sm font-bold text-slate-800">
+                                  {upload.title}
+                                </h4>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditCompanyFileTitlePopup(upload)}
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                  aria-label={`ویرایش عنوان ${upload.title || "فایل"}`}
+                                  title="ویرایش عنوان"
+                                >
+                                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+                                    <path d="M13.586 3.586a2 2 0 0 1 2.828 2.828l-.793.793-2.828-2.828.793-.793Z" />
+                                    <path d="m11.379 5.793 2.828 2.828-7.5 7.5H3.879v-2.828l7.5-7.5Z" />
+                                  </svg>
+                                </button>
+                              </div>
                               {upload.mimeType && (
                                 <p className={`mt-1 text-xs ${theme.colors.text.muted}`}>
                                   {upload.mimeType}
@@ -2816,6 +2886,58 @@ export default function DashboardPage({
                 {isInventorySaving ? "در حال ذخیره..." : "بروزرسانی"}
               </button>
             </div>
+          </form>
+        </div>
+      )}
+
+      {companyFileToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            aria-label="بستن پنجره ویرایش عنوان فایل"
+            className="absolute inset-0 bg-slate-950/45"
+            onClick={closeEditCompanyFileTitlePopup}
+          />
+          <form
+            onSubmit={handleEditCompanyFileTitle}
+            className="relative w-full max-w-md rounded-md border border-slate-200 bg-white p-5 text-right shadow-2xl"
+          >
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <h3 className={`text-base font-bold ${theme.colors.text.primary}`}>
+                ویرایش عنوان فایل
+              </h3>
+              <button
+                type="button"
+                onClick={closeEditCompanyFileTitlePopup}
+                disabled={isCompanyFileTitleSaving}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+              >
+                بستن
+              </button>
+            </div>
+            <label className="block">
+              <span className="text-sm font-bold text-slate-800">عنوان فایل</span>
+              <input
+                type="text"
+                value={companyFileEditTitle}
+                onChange={(event) => setCompanyFileEditTitle(event.target.value)}
+                autoFocus
+                required
+                className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+              />
+            </label>
+            {companyFileEditError && (
+              <p className="mt-3 text-sm font-bold text-red-700">
+                {companyFileEditError}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={isCompanyFileTitleSaving}
+              className="mt-5 min-h-10 rounded-md bg-amber-500 px-5 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isCompanyFileTitleSaving ? "در حال ذخیره..." : "ذخیره عنوان"}
+            </button>
           </form>
         </div>
       )}

@@ -137,3 +137,22 @@ export const deleteCompanyFile = async (companyId, fileId) => {
 
   return parseResponse(response);
 };
+
+export const updateCompanyFileTitle = async (companyId, fileId, title) => {
+  const response = await fetch(
+    `${API_BASE_URL}/api/companies/${companyId}/files/${fileId}/title`,
+    {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title }),
+    },
+  );
+
+  const data = await parseResponse(response);
+  const updatedFile = data?.file || data?.upload || data;
+
+  return updatedFile?.title ?? title;
+};

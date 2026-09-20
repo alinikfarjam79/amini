@@ -4,7 +4,13 @@ const PAGE_SIZE = 20;
 
 const useInfiniteScroll = (allProducts) => {
   const [page, setPage] = useState(1);
-  const sentinelRef = useRef(null);
+  const sentinelElementRef = useRef(null);
+  const [sentinelElement, setSentinelElement] = useState(null);
+
+  const sentinelRef = useCallback((element) => {
+    sentinelElementRef.current = element;
+    setSentinelElement(element);
+  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -20,8 +26,28 @@ const useInfiniteScroll = (allProducts) => {
   }, [hasMore]);
 
   useEffect(() => {
-    const sentinel = sentinelRef.current;
+    const sentinel = sentinelElement;
     if (!sentinel) return;
+
+    let frameId = null;
+    const checkSentinelPosition = () => {
+      if (!sentinelElementRef.current) return;
+
+      if (
+        sentinelElementRef.current.getBoundingClientRect().top <=
+        window.innerHeight + 240
+      ) {
+        loadMore();
+      }
+    };
+
+    const schedulePositionCheck = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        checkSentinelPosition();
+      });
+    };
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -31,8 +57,19 @@ const useInfiniteScroll = (allProducts) => {
     );
 
     observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMore]);
+    schedulePositionCheck();
+    window.addEventListener("scroll", schedulePositionCheck, { passive: true });
+    window.addEventListener("resize", schedulePositionCheck);
+    document.addEventListener("visibilitychange", schedulePositionCheck);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", schedulePositionCheck);
+      window.removeEventListener("resize", schedulePositionCheck);
+      document.removeEventListener("visibilitychange", schedulePositionCheck);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [loadMore, sentinelElement]);
 
   return {
     visibleProducts,

@@ -32,6 +32,7 @@ export default function ProductDetailsPage({ product, inventory = 0, isAdmin = f
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isAliasEditorOpen, setIsAliasEditorOpen] = useState(false);
   const [thresholdError, setThresholdError] = useState("");
   const [isThresholdSaving, setIsThresholdSaving] = useState(false);
   const [isThresholdEditorOpen, setIsThresholdEditorOpen] = useState(false);
@@ -73,6 +74,7 @@ export default function ProductDetailsPage({ product, inventory = 0, isAdmin = f
     try {
       await onUpdateAlias(productId, aliasValue.trim());
       setMessage("اسم مستعار با موفقیت ذخیره شد.");
+      setIsAliasEditorOpen(false);
     } catch (saveError) {
       setError(saveError.message || "ویرایش اسم مستعار ناموفق بود.");
     } finally {
@@ -158,93 +160,128 @@ export default function ProductDetailsPage({ product, inventory = 0, isAdmin = f
           <div className="border-b border-slate-200 pb-5">
             <p className="mb-2 text-xs font-bold text-slate-500">نام اصلی محصول</p>
             <h1 className="text-xl font-bold leading-9 text-slate-900 sm:text-2xl">{title}</h1>
-          </div>
-
-          <dl className="grid gap-5 py-6 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs font-bold text-slate-500">قیمت مصرف‌کننده</dt>
-              <dd className="mt-2 text-lg font-bold text-slate-900">
-                {formatPrice(product["قیمت اصلی"])} <span className="text-sm font-normal">تومان</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-bold text-slate-500">موجودی</dt>
-              <dd className={`mt-2 text-lg font-bold ${product.inventoryStatus === "critical" ? "text-red-700" : product.inventoryStatus === "warning" ? "text-amber-600" : product.inventoryStatus === "normal" ? "text-emerald-700" : inventoryNumber <= 0 ? "text-red-700" : "text-emerald-700"}`}>
-                {inventoryNumber.toLocaleString("fa-IR")}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-bold text-slate-500">کد محصول</dt>
-              <dd className="mt-2 font-mono text-sm text-slate-800">{product["کد کالا"] || "-"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-bold text-slate-500">بارکد</dt>
-              <dd className="mt-2 font-mono text-sm text-slate-800">{product["بارکد کالا"] || "-"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-bold text-slate-500">حد هشدار موجودی</dt>
-              <dd className="mt-2 text-sm font-bold text-slate-800">
-                {formatThreshold(product.warningThreshold)}
-              </dd>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600">
+                {product.alias || "اسم مستعار تعیین نشده"}
+              </span>
               {isAdmin && (
-                <button type="button" onClick={openThresholdEditor} className="mt-3 min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 hover:bg-slate-50">
-                  ویرایش آستانه‌ها
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAliasValue(product.alias || "");
+                    setError("");
+                    setMessage("");
+                    setIsAliasEditorOpen(true);
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  aria-label="ویرایش اسم مستعار"
+                  title="ویرایش اسم مستعار"
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+                    <path d="M13.586 3.586a2 2 0 0 1 2.828 2.828l-.793.793-2.828-2.828.793-.793Z" />
+                    <path d="m11.379 5.793 2.828 2.828-7.5 7.5H3.879v-2.828l7.5-7.5Z" />
+                  </svg>
                 </button>
               )}
             </div>
-            <div>
-              <dt className="text-xs font-bold text-slate-500">حد بحرانی موجودی</dt>
-              <dd className="mt-2 text-sm font-bold text-slate-800">
-                {formatThreshold(product.criticalThreshold)}
+            {message && <p className="mt-2 text-xs font-bold text-emerald-700">{message}</p>}
+          </div>
+
+          <dl className="py-4">
+            <div className="flex items-center justify-between gap-6 py-3">
+              <dt className="text-sm font-bold text-slate-500">قیمت مصرف‌کننده</dt>
+              <dd className="text-left text-base font-bold text-slate-900">
+                {formatPrice(product["قیمت اصلی"])} <span className="text-xs font-normal">تومان</span>
               </dd>
             </div>
-            <div>
-              <dt className="text-xs font-bold text-slate-500">کنترل آستانه موجودی</dt>
-              <dd className="mt-2 flex flex-wrap items-center gap-3">
-                <span className={`inline-flex rounded-md border px-2.5 py-1 text-sm font-bold ${product.thresholdEnabled ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+            <div className="flex items-center justify-between gap-6 py-3">
+              <dt className="text-sm font-bold text-slate-500">موجودی</dt>
+              <dd className={`text-left text-base font-bold ${product.inventoryStatus === "critical" ? "text-red-700" : product.inventoryStatus === "warning" ? "text-amber-600" : product.inventoryStatus === "normal" ? "text-emerald-700" : inventoryNumber <= 0 ? "text-red-700" : "text-emerald-700"}`}>
+                {inventoryNumber.toLocaleString("fa-IR")}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-6 py-3">
+              <dt className="text-sm font-bold text-slate-500">کد محصول</dt>
+              <dd className="text-left font-mono text-sm text-slate-800">{product["کد کالا"] || "-"}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-6 py-3">
+              <dt className="text-sm font-bold text-slate-500">بارکد</dt>
+              <dd className="text-left font-mono text-sm text-slate-800">{product["بارکد کالا"] || "-"}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-6 py-3">
+              <dt className="text-sm font-bold text-slate-500">وضعیت موجودی</dt>
+              <dd className={`inline-flex rounded-md border px-2.5 py-1 text-sm font-bold ${inventoryStatus.className}`}>
+                {inventoryStatus.label}
+              </dd>
+            </div>
+
+            <div className="my-3 border-t border-slate-200" />
+
+            <div className="flex items-center justify-between gap-6 py-3">
+              <dt className="text-sm font-bold text-slate-500">حد هشدار موجودی</dt>
+              <dd className="text-left text-sm font-bold text-slate-800">{formatThreshold(product.warningThreshold)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-6 py-3">
+              <dt className="text-sm font-bold text-slate-500">حد بحرانی موجودی</dt>
+              <dd className="text-left text-sm font-bold text-slate-800">{formatThreshold(product.criticalThreshold)}</dd>
+            </div>
+            {isAdmin && (
+              <div className="flex items-center justify-between gap-6 py-3">
+                <dt className="text-sm font-bold text-slate-500">تنظیم مقادیر آستانه</dt>
+                <dd>
+                  <button type="button" onClick={openThresholdEditor} className="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 hover:bg-slate-50">
+                    ویرایش آستانه‌ها
+                  </button>
+                </dd>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-6 py-3">
+              <dt className="text-sm font-bold text-slate-500">کنترل آستانه موجودی</dt>
+              <dd className="flex items-center gap-3">
+                <span className={`text-xs font-bold ${product.thresholdEnabled ? "text-emerald-700" : "text-slate-500"}`}>
                   {product.thresholdEnabled ? "فعال" : "غیرفعال"}
                 </span>
                 {isAdmin && (
                   <button
                     type="button"
+                    role="switch"
+                    aria-checked={product.thresholdEnabled}
+                    aria-label="تغییر وضعیت کنترل آستانه موجودی"
                     onClick={handleThresholdToggle}
                     disabled={isThresholdSaving}
-                    className={`min-h-9 rounded-md px-3 text-xs font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${product.thresholdEnabled ? "bg-red-600 hover:bg-red-500" : "bg-emerald-600 hover:bg-emerald-500"}`}
+                    className={`relative h-7 w-12 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40 disabled:cursor-not-allowed disabled:opacity-50 ${product.thresholdEnabled ? "bg-emerald-600" : "bg-slate-300"}`}
                   >
-                    {isThresholdSaving
-                      ? "در حال ذخیره..."
-                      : product.thresholdEnabled
-                        ? "غیرفعال کردن"
-                        : "فعال کردن"}
+                    <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-all ${product.thresholdEnabled ? "left-1" : "right-1"}`} />
                   </button>
                 )}
               </dd>
-              {thresholdError && (
-                <p className="mt-2 text-xs font-bold text-red-700">
-                  {thresholdError}
-                </p>
-              )}
             </div>
-            <div>
-              <dt className="text-xs font-bold text-slate-500">وضعیت موجودی</dt>
-              <dd className={`mt-2 inline-flex rounded-md border px-2.5 py-1 text-sm font-bold ${inventoryStatus.className}`}>
-                {inventoryStatus.label}
-              </dd>
-            </div>
+            {thresholdError && (
+              <p className="py-2 text-left text-xs font-bold text-red-700">{thresholdError}</p>
+            )}
           </dl>
 
-          {isAdmin && (
-            <form onSubmit={handleSubmit} className="border-t border-slate-200 pt-6">
-              <label className="block max-w-xl">
-                <span className="text-sm font-bold text-slate-900">اسم مستعار</span>
-                <input type="text" value={aliasValue} onChange={(event) => setAliasValue(event.target.value)} className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20" placeholder="اسم مستعار محصول را وارد کنید" />
-              </label>
-              {error && <p className="mt-3 text-sm font-bold text-red-700">{error}</p>}
-              {message && <p className="mt-3 text-sm font-bold text-emerald-700">{message}</p>}
-              <button type="submit" disabled={isSaving} className="mt-4 min-h-10 rounded-md bg-amber-500 px-5 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50">
-                {isSaving ? "در حال ذخیره..." : "ذخیره اسم مستعار"}
-              </button>
-            </form>
+          {isAdmin && isAliasEditorOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+              <button type="button" aria-label="بستن پنجره ویرایش اسم مستعار" className="absolute inset-0 bg-slate-950/45" onClick={() => !isSaving && setIsAliasEditorOpen(false)} />
+              <form onSubmit={handleSubmit} className="relative w-full max-w-md rounded-md border border-slate-200 bg-white p-5 text-right shadow-2xl">
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <h2 className="text-base font-bold text-slate-900">ویرایش اسم مستعار</h2>
+                  <button type="button" disabled={isSaving} onClick={() => setIsAliasEditorOpen(false)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+                    بستن
+                  </button>
+                </div>
+                <p className="mb-4 text-sm leading-7 text-slate-500">{title}</p>
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-800">اسم مستعار</span>
+                  <input type="text" value={aliasValue} onChange={(event) => setAliasValue(event.target.value)} autoFocus className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-right text-sm text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20" placeholder="اسم مستعار محصول را وارد کنید" />
+                </label>
+                {error && <p className="mt-3 text-sm font-bold text-red-700">{error}</p>}
+                <button type="submit" disabled={isSaving} className="mt-5 min-h-10 rounded-md bg-amber-500 px-5 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50">
+                  {isSaving ? "در حال ذخیره..." : "ذخیره اسم مستعار"}
+                </button>
+              </form>
+            </div>
           )}
 
           {isAdmin && isThresholdEditorOpen && (
