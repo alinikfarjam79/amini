@@ -110,12 +110,14 @@ export const uploadCompanyFile = async ({
   title,
   publishDate,
   file,
+  includePdfPages = false,
 }) => {
   const formData = new FormData();
   formData.append("companyName", companyName);
   formData.append("title", title);
   formData.append("publishDate", publishDate);
   formData.append("files", file);
+  formData.append("includePdfPages", String(includePdfPages));
 
   const response = await fetch(`${API_BASE_URL}/api/companies/files`, {
     method: "POST",
@@ -155,4 +157,29 @@ export const updateCompanyFileTitle = async (companyId, fileId, title) => {
   const updatedFile = data?.file || data?.upload || data;
 
   return updatedFile?.title ?? title;
+};
+
+export const downloadCompanyFile = async (file) => {
+  const downloadUrl = toAbsoluteUrl(file?.downloadUrl);
+
+  if (!downloadUrl) {
+    throw new Error("آدرس دانلود فایل موجود نیست.");
+  }
+
+  const response = await fetch(downloadUrl, { headers: authHeaders() });
+
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    throw new Error(payload?.message || "دانلود فایل ناموفق بود.");
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: file?.downloadName || file?.title || "download",
+  };
 };

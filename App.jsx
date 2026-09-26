@@ -15,6 +15,8 @@ import LoginPage from "./components/LoginPage";
 import { ProductGrid } from "./components/ProductGrid";
 import ProductDetailsPage from "./components/ProductDetailsPage";
 import InventoryAlertsPage from "./components/InventoryAlertsPage";
+import FiltersPage from "./components/FiltersPage";
+import DisabledProductsPage from "./components/DisabledProductsPage";
 import { SearchBox } from "./components/SearchBox";
 import { SyncButton } from "./components/SyncButton";
 import PriceChangesPage from "./components/PriceChangesPage";
@@ -22,6 +24,8 @@ import { theme } from "./config/theme";
 import {
   updateProductAlias as patchProductAlias,
   updateProductThresholdStatus as patchProductThresholdStatus,
+  updateProductEnabled as patchProductEnabled,
+  loadProductDetails,
 } from "./services/dataService";
 import useBarcodeScanner from "./hook/useBarcodeScanner";
 import useProductData from "./hook/useProductData";
@@ -150,24 +154,85 @@ const ProductDetailsRoute = ({
   onBack,
   onUpdateAlias,
   onUpdateThresholdStatus,
+  onUpdateEnabled,
 }) => {
   const { productId = "" } = useParams();
-  const product = products.find(
+  const location = useLocation();
+  const [selectedProduct, setSelectedProduct] = useState(() =>
+    getProductRouteId(location.state?.product) === productId
+      ? location.state.product
+      : null,
+  );
+  const [isDetailsLoading, setIsDetailsLoading] = useState(true);
+  const [detailsError, setDetailsError] = useState("");
+  const routeProduct =
+    getProductRouteId(location.state?.product) === productId
+      ? location.state.product
+      : null;
+  const product = (getProductRouteId(selectedProduct) === productId ? selectedProduct : null) || routeProduct || products.find(
     (item) => getProductRouteId(item) === productId,
   );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsDetailsLoading(true);
+    setDetailsError("");
+    loadProductDetails(productId, { signal: controller.signal })
+      .then((freshProduct) => {
+        setSelectedProduct(freshProduct);
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          setDetailsError(error.message || "دریافت جزئیات محصول ناموفق بود.");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsDetailsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [productId]);
+
+  const handleAliasUpdate = async (id, alias) => {
+    await onUpdateAlias(id, alias);
+    setSelectedProduct((current) =>
+      current ? { ...current, alias } : current,
+    );
+  };
+
+  const handleThresholdUpdate = async (id, updates) => {
+    const result = await onUpdateThresholdStatus(id, updates);
+    setSelectedProduct((current) =>
+      current ? { ...current, ...updates, ...result } : current,
+    );
+  };
+
+  const handleEnabledUpdate = async (id, enable) => {
+    const result = await onUpdateEnabled(id, enable);
+    setSelectedProduct((current) =>
+      current ? { ...current, enable: result } : current,
+    );
+  };
   const code = String(product?.["کد کالا"] || "").trim();
   const inventory = product
-    ? inventoryByCode[code] ?? product.quantity ?? 0
+    ? getProductRouteId(selectedProduct) === productId
+      ? selectedProduct.quantity ?? 0
+      : product.warehouses?.length
+      ? product.quantity ?? 0
+      : inventoryByCode[code] ?? product.quantity ?? 0
     : 0;
 
   return (
     <ProductDetailsPage
       product={product}
       inventory={inventory}
+      isLoading={isDetailsLoading}
+      loadError={detailsError}
       isAdmin={isAdmin}
       onBack={onBack}
-      onUpdateAlias={onUpdateAlias}
-      onUpdateThresholdStatus={onUpdateThresholdStatus}
+      onUpdateAlias={handleAliasUpdate}
+      onUpdateThresholdStatus={handleThresholdUpdate}
+      onUpdateEnabled={handleEnabledUpdate}
     />
   );
 };
@@ -184,6 +249,7 @@ export default function App() {
     replaceProducts,
     updateProductAlias,
     updateProductThresholdStatus,
+    updateProductEnabled,
   } =
     useProductData();
   const { priceChanges, computeChanges, dismissProduct } = usePriceChanges();
@@ -195,6 +261,12 @@ export default function App() {
   const { query, setQuery, filteredProducts } = useSearch(products, {
     searchTarget: isAdmin ? adminSearchTarget : "title",
   });
+  const visibleProducts = filteredProducts.filter(
+    (product) => product.enable !== false,
+  );
+  const enabledProductCount = products.filter(
+    (product) => product.enable !== false,
+  ).length;
   const [importError, setImportError] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const fileInputRef = useRef(null);
@@ -223,6 +295,10 @@ export default function App() {
       } else if (location.pathname === "/dashboard") {
         navigate("/");
       } else if (location.pathname === "/inventory-alerts") {
+        navigate("/filters");
+      } else if (location.pathname === "/disabled-products") {
+        navigate("/filters");
+      } else if (location.pathname === "/filters") {
         navigate("/");
       } else if (page === "priceChanges") {
         setPage("main");
@@ -373,6 +449,13 @@ export default function App() {
       thresholdUpdates,
     );
     updateProductThresholdStatus(productId, updatedThresholds);
+    return updatedThresholds;
+  };
+
+  const handleUpdateProductEnabled = async (productId, enable) => {
+    const nextEnabled = await patchProductEnabled(productId, enable);
+    updateProductEnabled(productId, nextEnabled);
+    return nextEnabled;
   };
 
   const handleLogout = () => {
@@ -414,15 +497,13 @@ export default function App() {
       `}</style>
 
       <Header
-        productCount={products.length}
+        productCount={enabledProductCount}
         isUsingCache={isUsingCache}
         currentUser={currentUser}
         onImportXls={() => fileInputRef.current?.click()}
         isImportingXls={importLoading}
         onDashboard={() => navigate("/dashboard")}
-        onInventoryAlerts={
-          isAdmin ? () => navigate("/inventory-alerts") : undefined
-        }
+        onFilters={isAdmin ? () => navigate("/filters") : undefined}
         onLogout={handleLogout}
       />
 
@@ -557,14 +638,14 @@ export default function App() {
         {/* ── Result count ── */}
         {query && !isLoading && (
           <p className={`text-xs ${theme.colors.text.muted}`}>
-            {filteredProducts.length.toLocaleString("fa-IR")} نتیجه از{" "}
-            {products.length.toLocaleString("fa-IR")} محصول
+            {visibleProducts.length.toLocaleString("fa-IR")} نتیجه از{" "}
+            {enabledProductCount.toLocaleString("fa-IR")} محصول
           </p>
         )}
 
         {/* ── Product Grid ── */}
         <ProductGrid
-          products={filteredProducts}
+          products={visibleProducts}
           isLoading={isLoading}
           searchQuery={query}
           inventoryByCode={inventoryByCode}
@@ -624,6 +705,41 @@ export default function App() {
               onBack={() => navigate(location.state?.returnTo || "/")}
               onUpdateAlias={handleUpdateProductAlias}
               onUpdateThresholdStatus={handleUpdateProductThresholdStatus}
+              onUpdateEnabled={handleUpdateProductEnabled}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/filters"
+        element={
+          isAdmin ? (
+            <FiltersPage
+              onBack={() => navigate("/")}
+              onInventoryMonitoring={() => navigate("/inventory-alerts")}
+              onDisabledProducts={() => navigate("/disabled-products")}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/disabled-products"
+        element={
+          isAdmin ? (
+            <DisabledProductsPage
+              onBack={() => navigate("/filters")}
+              onOpenProduct={(product) => {
+                const productId = getProductRouteId(product);
+                if (productId) {
+                  navigate(`/products/${encodeURIComponent(productId)}`, {
+                    state: { returnTo: "/disabled-products", product },
+                  });
+                }
+              }}
             />
           ) : (
             <Navigate to="/" replace />
@@ -635,12 +751,12 @@ export default function App() {
         element={
           isAdmin ? (
             <InventoryAlertsPage
-              onBack={() => navigate("/")}
+              onBack={() => navigate("/filters")}
               onOpenProduct={(product) => {
                 const productId = getProductRouteId(product);
                 if (productId) {
                   navigate(`/products/${encodeURIComponent(productId)}`, {
-                    state: { returnTo: "/inventory-alerts" },
+                    state: { returnTo: "/inventory-alerts", product },
                   });
                 }
               }}

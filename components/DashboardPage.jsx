@@ -8,6 +8,7 @@ import {
 } from "../services/productUploadService";
 import {
   deleteCompanyFile,
+  downloadCompanyFile,
   normalizeCompanyUploads,
   searchCompanies,
   updateCompanyFileTitle,
@@ -103,6 +104,28 @@ const formatUploadDate = (value) => {
     day: "2-digit",
   });
 };
+const sanitizeDownloadNamePart = (value, fallback) =>
+  String(value || fallback)
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ");
+
+const getDownloadFileExtension = (upload, originalName = "") => {
+  const candidates = [originalName, upload?.downloadName, upload?.fileName];
+
+  for (const candidate of candidates) {
+    const match = String(candidate || "").match(/(\.[a-z0-9]{1,10})$/i);
+    if (match) return match[1];
+  }
+
+  try {
+    const pathname = new URL(upload?.downloadUrl || "", window.location.href)
+      .pathname;
+    return pathname.match(/(\.[a-z0-9]{1,10})$/i)?.[1] || "";
+  } catch {
+    return "";
+  }
+};
 const getUploadDateTime = (upload) => {
   const value = getUploadDate(upload);
   if (!value) return 0;
@@ -132,6 +155,25 @@ const sortUploadsByNewest = (uploads) =>
 
     return secondTime - firstTime;
   });
+const getCompanyLastUpdatedDate = (company) => {
+  const companyDates = [
+    company?.updatedAt,
+    company?.lastUpdatedAt,
+    company?.modifiedAt,
+    company?.createdAt,
+  ];
+  const uploadDates = normalizeCompanyUploads(company).flatMap((upload) => [
+    upload?.updatedAt,
+    upload?.uploadedAt,
+    upload?.createdAt,
+    upload?.publishedAt,
+  ]);
+
+  return [...companyDates, ...uploadDates]
+    .filter(Boolean)
+    .map((value) => ({ value, time: getUploadDateTime({ updatedAt: value }) }))
+    .sort((first, second) => second.time - first.time)[0]?.value || "";
+};
 const normalizeDateInputDigits = (value = "") =>
   String(value)
     .replace(/[\u06F0-\u06F9]/g, (digit) => digit.charCodeAt(0) - 0x06f0)
@@ -315,10 +357,12 @@ export default function DashboardPage({
   const [companyFileEditTitle, setCompanyFileEditTitle] = useState("");
   const [companyFileEditError, setCompanyFileEditError] = useState("");
   const [isCompanyFileTitleSaving, setIsCompanyFileTitleSaving] = useState(false);
+  const [downloadingCompanyFileId, setDownloadingCompanyFileId] = useState("");
   const [companyFileTitle, setCompanyFileTitle] = useState("");
   const [companyFileCompanyName, setCompanyFileCompanyName] = useState("");
   const [companyFileDate, setCompanyFileDate] = useState("");
   const [companyFile, setCompanyFile] = useState(null);
+  const [includePdfPages, setIncludePdfPages] = useState(false);
   const [companyFileUploadError, setCompanyFileUploadError] = useState("");
   const [companyFileUploadMessage, setCompanyFileUploadMessage] = useState("");
   const [isCompanyFileUploading, setIsCompanyFileUploading] = useState(false);
@@ -668,6 +712,7 @@ export default function DashboardPage({
     setCompanyFileUploadError("");
     setCompanyFileUploadMessage("");
     setCompanyFileCompanyName(companyName !== "-" ? companyName : "");
+    setIncludePdfPages(false);
     setIsCompanyFileUploadPopupOpen(true);
   };
 
@@ -688,6 +733,7 @@ export default function DashboardPage({
     setCompanyFileCompanyName("");
     setCompanyFileDate("");
     setCompanyFile(null);
+    setIncludePdfPages(false);
     setCompanyFileInputKey((currentKey) => currentKey + 1);
   };
 
@@ -756,6 +802,7 @@ export default function DashboardPage({
         title,
         publishDate,
         file: companyFile,
+        includePdfPages,
       });
       const refreshedCompanies = await searchCompanies(companyName);
       const refreshedCompany =
@@ -920,6 +967,43 @@ export default function DashboardPage({
       setCompanyFileEditError(error.message || "ویرایش عنوان فایل ناموفق بود.");
     } finally {
       setIsCompanyFileTitleSaving(false);
+    }
+  };
+
+  const handleDownloadCompanyFile = async (upload) => {
+    const fileId = upload?.id || upload?._id;
+
+    if (!fileId || !upload?.downloadUrl) {
+      setCompanyUploadsError("آدرس دانلود فایل پیدا نشد.");
+      return;
+    }
+
+    setDownloadingCompanyFileId(fileId);
+    setCompanyUploadsError("");
+    try {
+      const { blob, filename } = await downloadCompanyFile(upload);
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const title = sanitizeDownloadNamePart(upload.title, "بدون عنوان");
+      const companyName = sanitizeDownloadNamePart(
+        getCompanyName(selectedCompany),
+        "بدون نام",
+      );
+      const date = sanitizeDownloadNamePart(
+        formatUploadDate(getUploadDate(upload)),
+        "بدون تاریخ",
+      );
+      const extension = getDownloadFileExtension(upload, filename);
+      anchor.href = objectUrl;
+      anchor.download = `لیست قیمت - ${title} - ${companyName} - ${date}${extension}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setCompanyUploadsError(error.message || "دانلود فایل ناموفق بود.");
+    } finally {
+      setDownloadingCompanyFileId("");
     }
   };
 
@@ -1885,21 +1969,34 @@ export default function DashboardPage({
                                 </p>
                               )}
                               <div className="mt-4 flex flex-wrap gap-2">
-                                {upload.url ? (
+                                {isImage && upload.url && (
                                   <a
                                     href={upload.url}
-                                    download={!isImage}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="inline-flex min-h-10 items-center rounded-md bg-amber-500 px-4 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400"
                                   >
-                                    {isImage ? "مشاهده تصویر" : "دانلود فایل"}
+                                    مشاهده تصویر
                                   </a>
-                                ) : (
-                                  <p className="text-sm font-bold text-red-600">
-                                    لینک فایل موجود نیست.
-                                  </p>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadCompanyFile(upload)}
+                                  disabled={downloadingCompanyFileId === (upload.id || upload._id)}
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
+                                  aria-label={`دانلود ${upload.title || "فایل"}`}
+                                  title="دانلود فایل"
+                                >
+                                  {downloadingCompanyFileId === (upload.id || upload._id) ? (
+                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" aria-hidden="true" />
+                                  ) : (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+                                      <path d="M12 3v12" />
+                                      <path d="m7 10 5 5 5-5" />
+                                      <path d="M5 21h14" />
+                                    </svg>
+                                  )}
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => openDeleteCompanyFilePopup(upload)}
@@ -1976,7 +2073,7 @@ export default function DashboardPage({
                   <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
                     <div className="grid grid-cols-[1fr_0.8fr_96px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
                       <span>نام شرکت</span>
-                      <span>شناسه</span>
+                      <span>آخرین به‌روزرسانی</span>
                       <span>عملیات</span>
                     </div>
                     <div className="divide-y divide-slate-100">
@@ -2003,8 +2100,8 @@ export default function DashboardPage({
                             <span className="font-bold text-slate-800">
                               {getCompanyName(company)}
                             </span>
-                            <span className="break-all font-mono text-slate-600">
-                              {getCompanyId(company) || "-"}
+                            <span className="text-slate-600">
+                              {formatUploadDate(getCompanyLastUpdatedDate(company)) || "-"}
                             </span>
                             <span className="rounded-md border border-slate-300 px-3 py-2 text-center text-xs font-bold text-slate-700">
                               مشاهده
@@ -2532,6 +2629,16 @@ export default function DashboardPage({
                 />
               </label>
             </div>
+
+            <label className="mt-5 flex cursor-pointer items-center gap-3 text-sm font-bold text-slate-800">
+              <input
+                type="checkbox"
+                checked={includePdfPages}
+                onChange={(event) => setIncludePdfPages(event.target.checked)}
+                className="h-4 w-4 accent-amber-500"
+              />
+              صفحه به صفحه ذخیره بشود
+            </label>
 
             <div className="mt-6 flex justify-end">
               <button

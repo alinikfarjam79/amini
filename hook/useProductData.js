@@ -140,6 +140,17 @@ const useProductData = () => {
         });
     }, []);
 
+    const updateProductEnabled = useCallback((productId, enable) => {
+        setProducts((currentProducts) => {
+            const nextProducts = currentProducts.map((product) =>
+                product._id === productId ? { ...product, enable } : product
+            );
+
+            cacheService.write(CACHE_KEY, nextProducts);
+            return nextProducts;
+        });
+    }, []);
+
     return {
         status,
         products,
@@ -149,6 +160,7 @@ const useProductData = () => {
         replaceProducts,
         updateProductAlias,
         updateProductThresholdStatus,
+        updateProductEnabled,
     };
 }
 

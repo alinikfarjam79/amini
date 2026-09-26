@@ -25,10 +25,12 @@ export const normalizeApiProduct = (product) => ({
   [PRODUCT_COLUMNS.price]: product.originalPrice ?? 0,
   alias: product.alias ?? "",
   quantity: product.quantity ?? 0,
+  warehouses: Array.isArray(product.warehouses) ? product.warehouses : [],
   warningThreshold: product.warningThreshold ?? null,
   criticalThreshold: product.criticalThreshold ?? null,
   thresholdEnabled: product.thresholdEnabled ?? false,
   inventoryStatus: product.inventoryStatus ?? "",
+  enable: product.enable ?? true,
   _id: product._id,
   createdAt: product.createdAt,
   updatedAt: product.updatedAt,
@@ -76,9 +78,39 @@ export const loadProducts = async () => {
   };
 };
 
+export const loadProductDetails = async (productId, { signal } = {}) => {
+  const token = getCookie(TOKEN_COOKIE_NAME);
+  const response = await fetch(
+    `${PRODUCTS_URL}/${encodeURIComponent(productId)}`,
+    {
+      signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error("پاسخ جزئیات محصول قابل خواندن نیست.");
+  }
+
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.message || "دریافت جزئیات محصول ناموفق بود.");
+  }
+
+  const product = payload?.data?.product || payload?.data;
+  if (!product || Array.isArray(product) || typeof product !== "object") {
+    throw new Error("ساختار پاسخ جزئیات محصول معتبر نیست.");
+  }
+
+  return normalizeApiProduct(product);
+};
+
 export const loadProductsByInventoryFilter = async ({
   inventoryStatus,
   thresholdEnabled,
+  enable,
   search,
   signal,
 } = {}) => {
@@ -89,6 +121,7 @@ export const loadProductsByInventoryFilter = async ({
   if (thresholdEnabled !== undefined) {
     params.set("thresholdEnabled", String(thresholdEnabled));
   }
+  if (enable !== undefined) params.set("enable", String(enable));
   if (search?.trim()) params.set("search", search.trim());
 
   const response = await fetch(`${PRODUCTS_URL}?${params.toString()}`, {
@@ -179,4 +212,30 @@ export const updateProductThresholdStatus = async (
       product?.thresholdEnabled ?? updates.thresholdEnabled,
     inventoryStatus: product?.inventoryStatus,
   };
+};
+
+export const updateProductEnabled = async (productId, enable) => {
+  const token = getCookie(TOKEN_COOKIE_NAME);
+  const response = await fetch(`${PRODUCTS_URL}/${productId}/enable`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ enable }),
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.message || "تغییر وضعیت محصول ناموفق بود.");
+  }
+
+  const product = payload?.data?.product || payload?.data;
+  return product?.enable ?? enable;
 };
