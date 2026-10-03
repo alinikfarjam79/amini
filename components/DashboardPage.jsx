@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
 import { Header } from "./Header";
 import { SearchBox } from "./SearchBox";
 import { theme } from "../config/theme";
@@ -69,6 +71,7 @@ const isImageUpload = (upload) => {
 };
 const getUploadDate = (upload) =>
   upload?.publishedAt ||
+  upload?.publishDate ||
   upload?.uploadedAt ||
   upload?.createdAt ||
   upload?.updatedAt ||
@@ -126,6 +129,16 @@ const getDownloadFileExtension = (upload, originalName = "") => {
     return "";
   }
 };
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("خواندن فایل دانلودشده ناموفق بود."));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.includes(",") ? result.split(",")[1] : result);
+    };
+    reader.readAsDataURL(blob);
+  });
 const getUploadDateTime = (upload) => {
   const value = getUploadDate(upload);
   if (!value) return 0;
@@ -155,25 +168,16 @@ const sortUploadsByNewest = (uploads) =>
 
     return secondTime - firstTime;
   });
-const getCompanyLastUpdatedDate = (company) => {
-  const companyDates = [
-    company?.updatedAt,
-    company?.lastUpdatedAt,
-    company?.modifiedAt,
-    company?.createdAt,
-  ];
-  const uploadDates = normalizeCompanyUploads(company).flatMap((upload) => [
-    upload?.updatedAt,
-    upload?.uploadedAt,
-    upload?.createdAt,
-    upload?.publishedAt,
-  ]);
-
-  return [...companyDates, ...uploadDates]
-    .filter(Boolean)
-    .map((value) => ({ value, time: getUploadDateTime({ updatedAt: value }) }))
+const getCompanyLatestFileDate = (company) =>
+  normalizeCompanyUploads(company)
+    .map((upload) => ({
+      value: upload?.publishedAt || upload?.publishDate || "",
+      time: getUploadDateTime({
+        publishedAt: upload?.publishedAt || upload?.publishDate,
+      }),
+    }))
+    .filter((date) => date.value)
     .sort((first, second) => second.time - first.time)[0]?.value || "";
-};
 const normalizeDateInputDigits = (value = "") =>
   String(value)
     .replace(/[\u06F0-\u06F9]/g, (digit) => digit.charCodeAt(0) - 0x06f0)
@@ -351,6 +355,7 @@ export default function DashboardPage({
     useState(null);
   const [companyUploads, setCompanyUploads] = useState([]);
   const [companyUploadsError, setCompanyUploadsError] = useState("");
+  const [companyUploadsMessage, setCompanyUploadsMessage] = useState("");
   const [companyFileToDelete, setCompanyFileToDelete] = useState(null);
   const [isCompanyFileDeleting, setIsCompanyFileDeleting] = useState(false);
   const [companyFileToEdit, setCompanyFileToEdit] = useState(null);
@@ -980,10 +985,9 @@ export default function DashboardPage({
 
     setDownloadingCompanyFileId(fileId);
     setCompanyUploadsError("");
+    setCompanyUploadsMessage("");
     try {
       const { blob, filename } = await downloadCompanyFile(upload);
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
       const title = sanitizeDownloadNamePart(upload.title, "بدون عنوان");
       const companyName = sanitizeDownloadNamePart(
         getCompanyName(selectedCompany),
@@ -994,12 +998,28 @@ export default function DashboardPage({
         "بدون تاریخ",
       );
       const extension = getDownloadFileExtension(upload, filename);
+      const downloadName = `لیست قیمت - ${title} - ${companyName} - ${date}${extension}`;
+
+      if (Capacitor.isNativePlatform()) {
+        const data = await blobToBase64(blob);
+        await Filesystem.writeFile({
+          path: downloadName,
+          data,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+        setCompanyUploadsMessage(`فایل «${downloadName}» در پوشه Documents ذخیره شد.`);
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = `لیست قیمت - ${title} - ${companyName} - ${date}${extension}`;
+      anchor.download = downloadName;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(objectUrl);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     } catch (error) {
       setCompanyUploadsError(error.message || "دانلود فایل ناموفق بود.");
     } finally {
@@ -1912,7 +1932,15 @@ export default function DashboardPage({
                     <div className="rounded-md border border-red-200 bg-red-50 px-4 py-8 text-center text-sm font-bold text-red-700">
                       {companyUploadsError}
                     </div>
-                  ) : companyUploads.length === 0 ? (
+                  ) : null}
+
+                  {companyUploadsMessage ? (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm font-bold text-emerald-700">
+                      {companyUploadsMessage}
+                    </div>
+                  ) : null}
+
+                  {companyUploads.length === 0 ? (
                     <div className={`rounded-md border border-slate-200 bg-white px-4 py-8 text-center text-sm ${theme.colors.text.muted}`}>
                       فایلی برای این شرکت ثبت نشده است.
                     </div>
@@ -2073,7 +2101,7 @@ export default function DashboardPage({
                   <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
                     <div className="grid grid-cols-[1fr_0.8fr_96px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
                       <span>نام شرکت</span>
-                      <span>آخرین به‌روزرسانی</span>
+                      <span>تاریخ آخرین فایل</span>
                       <span>عملیات</span>
                     </div>
                     <div className="divide-y divide-slate-100">
@@ -2101,7 +2129,7 @@ export default function DashboardPage({
                               {getCompanyName(company)}
                             </span>
                             <span className="text-slate-600">
-                              {formatUploadDate(getCompanyLastUpdatedDate(company)) || "-"}
+                              {formatUploadDate(getCompanyLatestFileDate(company)) || "-"}
                             </span>
                             <span className="rounded-md border border-slate-300 px-3 py-2 text-center text-xs font-bold text-slate-700">
                               مشاهده
