@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { Header } from "./Header";
 import { SearchBox } from "./SearchBox";
+import CompanyProductPricesPage from "./CompanyProductPricesPage";
 import { theme } from "../config/theme";
 import {
   uploadProductsExcel,
@@ -400,6 +401,7 @@ export default function DashboardPage({
         activeSection === "uploads" ||
         activeSection === "users" ||
         activeSection === "companyPrices" ||
+        activeSection === "companyProductPrices" ||
         activeSection === "companyFileUpload")
     ) {
       setActiveSection("dashboard");
@@ -623,6 +625,7 @@ export default function DashboardPage({
           { id: "warehouse", label: "مدیریت انبار" },
           { id: "uploads", label: "آپلود فایل‌ها" },
           { id: "companyPrices", label: "مدیریت لیست قیمت‌ها" },
+          { id: "companyProductPrices", label: "لیست قیمت شرکت‌ها" },
           { id: "users", label: "مدیریت کاربران" },
         ]
       : []),
@@ -658,6 +661,14 @@ export default function DashboardPage({
       title: "مدیریت لیست قیمت شرکت‌ها",
       description: "آپلود و بروزرسانی فایل‌های لیست محصولات و قیمت‌های شرکت‌ها.",
       sectionId: "companyPrices",
+      adminOnly: true,
+    },
+    {
+      id: "company-product-prices",
+      icon: "💰",
+      title: "لیست قیمت شرکت‌ها",
+      description: "جست‌وجو و فیلتر محصولات شرکت‌ها، آپلود اکسل و مشاهده تاریخچه قیمت‌ها.",
+      sectionId: "companyProductPrices",
       adminOnly: true,
     },
     {
@@ -1585,6 +1596,8 @@ export default function DashboardPage({
         ? "آپلود فایل‌ها"
       : activeSection === "companyPrices" && isAdmin
         ? "مدیریت لیست قیمت‌ها"
+      : activeSection === "companyProductPrices" && isAdmin
+        ? "لیست قیمت شرکت‌ها"
       : activeSection === "companyFileUpload" && isAdmin
         ? "آپلود فایل شرکت"
       : activeSection === "users" && isAdmin
@@ -2142,6 +2155,8 @@ export default function DashboardPage({
                 </>
               )}
             </section>
+          ) : activeSection === "companyProductPrices" && isAdmin ? (
+            <CompanyProductPricesPage />
           ) : activeSection === "uploads" && isAdmin ? (
             <section className="space-y-5">
               <UploadCard
