@@ -1476,6 +1476,40 @@ export default function DashboardPage({
               </div>
             </div>
 
+            {Array.isArray(state.details.newProductList) &&
+              state.details.newProductList.length > 0 && (
+                <div>
+                  <h4 className="mb-2 font-bold text-emerald-700">
+                    محصولات جدید
+                  </h4>
+                  <div className="overflow-x-auto rounded-md border border-emerald-200 bg-white">
+                    <div className="min-w-[680px] divide-y divide-emerald-100">
+                      <div className="grid grid-cols-[1fr_140px_140px_120px] gap-3 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                        <span>عنوان</span>
+                        <span>کد محصول</span>
+                        <span>بارکد</span>
+                        <span>قیمت ثبت‌شده</span>
+                      </div>
+                      {state.details.newProductList.map((product, index) => (
+                        <div
+                          key={product._id || `${product.productCode}-${index}`}
+                          className="grid grid-cols-[1fr_140px_140px_120px] gap-3 px-3 py-2"
+                        >
+                          <span className="font-bold">{product.title || "-"}</span>
+                          <span className="font-mono">{product.productCode || "-"}</span>
+                          <span className="font-mono">{product.barcode || "-"}</span>
+                          <span className="font-bold text-emerald-700">
+                            {product.originalPrice == null
+                              ? "-"
+                              : Number(product.originalPrice).toLocaleString("fa-IR")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
             {renderInvalidPriceTable(
               "محصولاتی که قیمت نامعتبر داشتند و با صفر ذخیره شدند",
               createdInvalidPriceProducts,

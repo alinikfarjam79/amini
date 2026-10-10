@@ -13,6 +13,6 @@ public class MainActivity extends BridgeActivity {
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(BarcodeScannerPlugin.class);
     super.onCreate(savedInstanceState);
-
+    getBridge().getWebView().getSettings().setTextZoom(100);
   }
 }
