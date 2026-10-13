@@ -17,6 +17,12 @@ buildscript {
 
 apply from: "variables.gradle"
 
+subprojects { subproject ->
+    if (subproject.name == 'capacitor-community-speech-recognition') {
+        subproject.buildscript.configurations.classpath.resolutionStrategy.force 'com.android.tools.build:gradle:8.13.0'
+    }
+}
+
 allprojects {
     repositories {
         google()

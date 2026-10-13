@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Mic, MicOff } from "lucide-react";
 import {
   Route,
   Routes,
@@ -28,6 +30,8 @@ import {
   loadProductDetails,
 } from "./services/dataService";
 import useBarcodeScanner from "./hook/useBarcodeScanner";
+import useVoiceSearch from "./hook/useVoiceSearch";
+import useWebVoiceSearch from "./hook/useWebVoiceSearch";
 import useProductData from "./hook/useProductData";
 import useSearch from "./hook/useSearch";
 import usePriceChanges from "./hook/usePriceChanges";
@@ -261,6 +265,12 @@ export default function App() {
   const { query, setQuery, filteredProducts } = useSearch(products, {
     searchTarget: isAdmin ? adminSearchTarget : "title",
   });
+  const isAndroid = Capacitor.getPlatform() === "android";
+  const isWeb = Capacitor.getPlatform() === "web";
+  const androidVoiceSearch = useVoiceSearch(setQuery);
+  const webVoiceSearch = useWebVoiceSearch(setQuery);
+  const voiceSearch = isAndroid ? androidVoiceSearch : webVoiceSearch;
+  const showVoiceSearch = isAndroid || isWeb;
   const visibleProducts = filteredProducts.filter(
     (product) => product.enable !== false,
   );
@@ -553,20 +563,48 @@ export default function App() {
           dir="rtl"
           className="flex items-center sticky top-2 z-10 justify-start gap-3 flex-wrap"
         >
-          <SearchBox
-            query={query}
-            onChange={setQuery}
-            leftAction={
-              <button
-                type="button"
-                onClick={openScanner}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-white bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-100"
-                aria-label="باز کردن اسکنر QR"
-              >
-                <BarcodeIcon className="h-4 w-4" />
-              </button>
-            }
-          />
+          <div className="w-full sm:w-80">
+            <SearchBox
+              query={query}
+              onChange={(value) => {
+                voiceSearch.clearError();
+                setQuery(value);
+              }}
+              actionCount={showVoiceSearch ? 2 : 1}
+              leftAction={
+                <>
+                  <button
+                    type="button"
+                    onClick={openScanner}
+                    className="flex h-7 w-7 items-center justify-center rounded-md border border-white bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-100"
+                    aria-label="باز کردن اسکنر QR"
+                  >
+                    <BarcodeIcon className="h-4 w-4" />
+                  </button>
+                  {showVoiceSearch && (
+                    <button
+                      type="button"
+                      onClick={isWeb && voiceSearch.listening ? voiceSearch.stop : voiceSearch.start}
+                      disabled={isAndroid && voiceSearch.listening}
+                      aria-label={isWeb && voiceSearch.listening ? "لغو جست‌وجوی صوتی" : "جست‌وجوی صوتی"}
+                      title={isWeb && voiceSearch.listening ? "لغو جست‌وجوی صوتی" : "جست‌وجوی صوتی"}
+                      aria-busy={voiceSearch.listening}
+                      className={`flex h-7 w-7 items-center justify-center rounded-md border border-white shadow-sm transition-colors disabled:cursor-wait ${voiceSearch.listening ? "bg-amber-400 text-slate-950" : "bg-white text-slate-900 hover:bg-slate-100"}`}
+                    >
+                      {isWeb && voiceSearch.listening
+                        ? <MicOff className="h-4 w-4" aria-hidden="true" />
+                        : <Mic className="h-4 w-4" aria-hidden="true" />}
+                    </button>
+                  )}
+                </>
+              }
+            />
+            {showVoiceSearch && (voiceSearch.listening || voiceSearch.error) && (
+              <p role="status" className={`mt-1 text-xs font-bold ${voiceSearch.error ? "text-red-700" : "text-amber-700"}`}>
+                {voiceSearch.error || "در حال گوش دادن..."}
+              </p>
+            )}
+          </div>
           {isAdmin && (
             <div className="flex min-h-10 overflow-hidden rounded-xl border border-slate-300 bg-white text-xs font-bold shadow-sm">
               <button
